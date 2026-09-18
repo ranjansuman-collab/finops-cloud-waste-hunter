@@ -1,0 +1,164 @@
+﻿"""
+FinOps Orchestration Engine
+Coordinates the entire 7-module lifecycle:
+Module 1: Resource Monitoring
+Module 2: Waste Detection
+Module 3: Cost & Savings Estimation
+Module 4: AI Recommendation (Amazon Bedrock Nova Lite)
+Module 5: Report Storage (Amazon S3 & DynamoDB)
+Module 6: Terraform Remediation
+Module 7: GitOps Review
+
+ISWE309L Cloud Computing - Course Project Review-1
+Team: Vivek Pandey (24MIS0216) & S. Hemal (24MIS0050)
+"""
+
+import uuid
+import logging
+from typing import Dict, Any, Optional
+from datetime import datetime, timezone
+
+from core.models import PipelineReport
+from core.module1_monitoring import ResourceMonitoringModule
+from core.module2_waste_detection import WasteDetectionModule
+from core.module3_cost_estimation import CostEstimationModule
+from core.module4_ai_advisor import AIAdvisorModule
+from core.module5_storage import ReportStorageModule
+from core.module6_terraform import TerraformRemediationModule
+from core.module7_gitops import GitOpsReviewModule
+
+logger = logging.getLogger("finops.engine")
+
+
+class FinOpsEngine:
+    def __init__(self, use_live_aws: bool = False):
+        self.module1 = ResourceMonitoringModule(use_live_aws=use_live_aws)
+        self.module2 = WasteDetectionModule()
+        self.module3 = CostEstimationModule()
+        self.module4 = AIAdvisorModule()
+        self.module5 = ReportStorageModule()
+        self.module6 = TerraformRemediationModule()
+        self.module7 = GitOpsReviewModule()
+        self.last_report: Optional[PipelineReport] = None
+
+    def execute_full_pipeline(self, scenario_id: str = "enterprise") -> PipelineReport:
+        run_id = f"run-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4]}"
+
+        # Step 1: Resource Monitoring
+        resources = self.module1.fetch_resources(scenario_id)
+
+        # Step 2: Waste Detection
+        waste_findings = self.module2.detect_waste(resources)
+
+        # Step 3: Cost & Savings Estimation
+        cost_findings = self.module3.estimate_savings(waste_findings, resources)
+
+        total_current = sum(c.current_monthly_cost for c in cost_findings)
+        total_optimized = sum(c.optimized_monthly_cost for c in cost_findings)
+        total_monthly_savings = sum(c.monthly_savings for c in cost_findings)
+        total_annualized_savings = sum(c.annualized_savings for c in cost_findings)
+        total_carbon = sum(c.carbon_savings_kg_co2e for c in cost_findings)
+
+        # Step 4: AI Recommendations (Amazon Bedrock Nova Lite)
+        ai_recommendations = self.module4.generate_recommendations(waste_findings, cost_findings)
+
+        # Step 6: Terraform Remediation Patches
+        terraform_patches = self.module6.generate_patches(waste_findings, ai_recommendations)
+
+        # Step 7: GitOps Pull Request & Review
+        gitops_pr = None
+        if waste_findings:
+            gitops_pr = self.module7.create_pull_request(
+                run_id=run_id,
+                patches=terraform_patches,
+                findings=waste_findings,
+                costs=cost_findings,
+                recommendations=ai_recommendations,
+                total_monthly_savings=total_monthly_savings,
+                total_annualized_savings=total_annualized_savings
+            )
+
+        report = PipelineReport(
+            run_id=run_id,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            scenario=scenario_id,
+            monitored_resources=resources,
+            waste_findings=waste_findings,
+            cost_findings=cost_findings,
+            total_current_monthly_cost=round(total_current, 2),
+            total_optimized_monthly_cost=round(total_optimized, 2),
+            total_monthly_savings=round(total_monthly_savings, 2),
+            total_annualized_savings=round(total_annualized_savings, 2),
+            total_carbon_savings_kg=round(total_carbon, 2),
+            ai_recommendations=ai_recommendations,
+            terraform_patches=terraform_patches,
+            gitops_pr=gitops_pr
+        )
+
+        # Step 5: S3 & DynamoDB Storage
+        storage_meta = self.module5.store_pipeline_run(report.model_dump())
+        report.s3_uri = storage_meta.get("s3_uri", "")
+        report.dynamodb_id = storage_meta.get("dynamodb_id", "")
+
+        self.last_report = report
+        return report
+
+    def get_module_data(self, module_num: int, scenario_id: str = "enterprise") -> Dict[str, Any]:
+        """Supports inspecting operations individually for module-wise demonstration."""
+        if not self.last_report:
+            self.execute_full_pipeline(scenario_id)
+        report = self.last_report
+
+        if module_num == 1:
+            return {
+                "module": 1,
+                "title": "Resource Monitoring",
+                "count": len(report.monitored_resources),
+                "data": [r.model_dump() for r in report.monitored_resources]
+            }
+        elif module_num == 2:
+            return {
+                "module": 2,
+                "title": "Waste Detection",
+                "count": len(report.waste_findings),
+                "data": [w.model_dump() for w in report.waste_findings]
+            }
+        elif module_num == 3:
+            return {
+                "module": 3,
+                "title": "Cost & Savings Estimation",
+                "total_monthly_savings": report.total_monthly_savings,
+                "total_annualized_savings": report.total_annualized_savings,
+                "total_carbon_savings_kg": report.total_carbon_savings_kg,
+                "data": [c.model_dump() for c in report.cost_findings]
+            }
+        elif module_num == 4:
+            return {
+                "module": 4,
+                "title": "AI Recommendation (Amazon Bedrock Nova Lite)",
+                "model": "amazon.nova-lite-v1:0",
+                "data": [r.model_dump() for r in report.ai_recommendations]
+            }
+        elif module_num == 5:
+            return {
+                "module": 5,
+                "title": "Report Storage (Amazon S3 & DynamoDB)",
+                "s3_uri": report.s3_uri,
+                "dynamodb_id": report.dynamodb_id,
+                "audit_history": self.module5.get_audit_records()
+            }
+        elif module_num == 6:
+            return {
+                "module": 6,
+                "title": "Terraform Remediation",
+                "patches_count": len(report.terraform_patches),
+                "data": [p.model_dump() for p in report.terraform_patches]
+            }
+        elif module_num == 7:
+            return {
+                "module": 7,
+                "title": "GitOps Review & Pull Requests",
+                "pr": report.gitops_pr.model_dump() if report.gitops_pr else None,
+                "active_prs": {k: v.model_dump() for k, v in self.module7.active_prs.items()}
+            }
+        return {"error": "Invalid module number"}

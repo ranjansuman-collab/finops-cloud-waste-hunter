@@ -1,0 +1,93 @@
+﻿/* FinOps Cloud Waste Hunter Styles */
+
+:root {
+  --bg-primary: #020617;
+  --bg-card: rgba(15, 23, 42, 0.75);
+  --border-card: rgba(51, 65, 85, 0.6);
+}
+
+body {
+  background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #090d16 40%, #020617 100%);
+  background-attachment: fixed;
+}
+
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+}
+
+.nav-step.active {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(234, 88, 12, 0.15) 100%);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #fbbf24;
+}
+
+.nav-step.active .step-num {
+  background: #f59e0b;
+  color: #000;
+  font-weight: 700;
+}
+
+.module-tab-content {
+  display: none;
+}
+
+.module-tab-content.active {
+  display: block;
+  animation: fadeIn 0.25s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Diff Styling */
+.diff-del {
+  background-color: rgba(244, 63, 94, 0.15);
+  color: #f43f5e;
+  display: block;
+  padding: 1px 4px;
+  border-left: 3px solid #f43f5e;
+}
+
+.diff-add {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  display: block;
+  padding: 1px 4px;
+  border-left: 3px solid #10b981;
+}
+
+.diff-header {
+  color: #38bdf8;
+  display: block;
+  padding: 1px 4px;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.6);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.9);
+}

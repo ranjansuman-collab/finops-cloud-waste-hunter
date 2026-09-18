@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# PyInstaller
+build/
+dist/
+*.manifest
+*.spec
+
+# Logs & Storage runs
+storage/s3_bucket/reports/*.json
+storage/s3_bucket/reports/*.md
+storage/dynamodb/*.json
+!storage/**/.gitkeep
+
+# Environments
+.env
+.env.local
+.DS_Store
+Thumbs.db
