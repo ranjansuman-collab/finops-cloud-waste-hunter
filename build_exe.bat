@@ -7,7 +7,7 @@ echo ======================================================================
 echo Checking PyInstaller installation...
 python -m pip install pyinstaller
 echo Compiling FinOps-Waste-Hunter.exe...
-pyinstaller --noconfirm --onedir --windowed --name "FinOps-Waste-Hunter" ^
+python -m PyInstaller --noconfirm --onedir --name "FinOps-Waste-Hunter" ^
   --add-data "app/static;app/static" ^
   --add-data "sample_infrastructure;sample_infrastructure" ^
   --add-data "data;data" ^
