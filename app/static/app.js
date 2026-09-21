@@ -1,4 +1,4 @@
-﻿/**
+/**
  * FinOps Cloud Waste Hunter & Auto-Remediator - Client Logic
  * ISWE309L Cloud Computing - Course Project Review-1
  * Team: Vivek Pandey (24MIS0216) & S. Hemal (24MIS0050)
@@ -463,7 +463,11 @@ function switchTab(modId) {
   // Update nav buttons
   const buttons = document.querySelectorAll("#modulePipelineNav .nav-step");
   buttons.forEach(b => b.classList.remove("active"));
-  event.currentTarget.classList.add("active");
+  
+  const activeBtn = document.querySelector(`#modulePipelineNav [data-tab="${modId}"]`);
+  if (activeBtn) {
+    activeBtn.classList.add("active");
+  }
 
   // Show selected tab
   document.querySelectorAll(".module-tab-content").forEach(el => el.classList.remove("active"));

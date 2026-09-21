@@ -10,7 +10,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="/static/styles.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen font-['Plus_Jakarta_Sans',sans-serif] antialiased">
@@ -66,41 +66,31 @@
       </div>
     </div>
 
-    <!-- 7-Module Interactive Workflow Stepper -->
+    <!-- Navigation Bar: Dashboard + 7 Modules (No numbers, no arrows) -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 overflow-x-auto border-t border-slate-800/40">
-      <nav class="flex items-center justify-between min-w-[850px] gap-1 text-xs" id="modulePipelineNav">
-        <button onclick="switchTab('mod1')" class="nav-step active flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-700/60 bg-slate-800/50 hover:bg-slate-800 transition">
-          <span class="step-num w-5 h-5 rounded-full bg-slate-700 text-slate-300 font-mono text-[10px] flex items-center justify-center">1</span>
+      <nav class="flex items-center justify-start min-w-[850px] gap-2 text-xs" id="modulePipelineNav">
+        <button onclick="switchTab('dashboard')" data-tab="dashboard" class="nav-step active flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-slate-700/60 bg-slate-800/50 hover:bg-slate-800 transition font-medium">
+          <span>Dashboard</span>
+        </button>
+        <button onclick="switchTab('mod1')" data-tab="mod1" class="nav-step flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-slate-700/60 bg-slate-800/50 hover:bg-slate-800 transition font-medium">
           <span>Monitoring</span>
         </button>
-        <span class="text-slate-600 font-mono">→</span>
-        <button onclick="switchTab('mod2')" class="nav-step flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-700/60 bg-slate-800/50 hover:bg-slate-800 transition">
-          <span class="step-num w-5 h-5 rounded-full bg-slate-700 text-slate-300 font-mono text-[10px] flex items-center justify-center">2</span>
+        <button onclick="switchTab('mod2')" data-tab="mod2" class="nav-step flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-slate-700/60 bg-slate-800/50 hover:bg-slate-800 transition font-medium">
           <span>Waste Detection</span>
         </button>
-        <span class="text-slate-600 font-mono">→</span>
-        <button onclick="switchTab('mod3')" class="nav-step flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-700/60 bg-slate-800/50 hover:bg-slate-800 transition">
-          <span class="step-num w-5 h-5 rounded-full bg-slate-700 text-slate-300 font-mono text-[10px] flex items-center justify-center">3</span>
+        <button onclick="switchTab('mod3')" data-tab="mod3" class="nav-step flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-slate-700/60 bg-slate-800/50 hover:bg-slate-800 transition font-medium">
           <span>Cost & Savings</span>
         </button>
-        <span class="text-slate-600 font-mono">→</span>
-        <button onclick="switchTab('mod4')" class="nav-step flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-700/60 bg-slate-800/50 hover:bg-slate-800 transition">
-          <span class="step-num w-5 h-5 rounded-full bg-slate-700 text-slate-300 font-mono text-[10px] flex items-center justify-center">4</span>
+        <button onclick="switchTab('mod4')" data-tab="mod4" class="nav-step flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-slate-700/60 bg-slate-800/50 hover:bg-slate-800 transition font-medium">
           <span>Bedrock AI</span>
         </button>
-        <span class="text-slate-600 font-mono">→</span>
-        <button onclick="switchTab('mod5')" class="nav-step flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-700/60 bg-slate-800/50 hover:bg-slate-800 transition">
-          <span class="step-num w-5 h-5 rounded-full bg-slate-700 text-slate-300 font-mono text-[10px] flex items-center justify-center">5</span>
-          <span>S3 & DynamoDB</span>
+        <button onclick="switchTab('mod5')" data-tab="mod5" class="nav-step flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-slate-700/60 bg-slate-800/50 hover:bg-slate-800 transition font-medium">
+          <span>Report Storage</span>
         </button>
-        <span class="text-slate-600 font-mono">→</span>
-        <button onclick="switchTab('mod6')" class="nav-step flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-700/60 bg-slate-800/50 hover:bg-slate-800 transition">
-          <span class="step-num w-5 h-5 rounded-full bg-slate-700 text-slate-300 font-mono text-[10px] flex items-center justify-center">6</span>
-          <span>Terraform Patch</span>
+        <button onclick="switchTab('mod6')" data-tab="mod6" class="nav-step flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-slate-700/60 bg-slate-800/50 hover:bg-slate-800 transition font-medium">
+          <span>Terraform Remediation</span>
         </button>
-        <span class="text-slate-600 font-mono">→</span>
-        <button onclick="switchTab('mod7')" class="nav-step flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-700/60 bg-slate-800/50 hover:bg-slate-800 transition">
-          <span class="step-num w-5 h-5 rounded-full bg-slate-700 text-slate-300 font-mono text-[10px] flex items-center justify-center">7</span>
+        <button onclick="switchTab('mod7')" data-tab="mod7" class="nav-step flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-slate-700/60 bg-slate-800/50 hover:bg-slate-800 transition font-medium">
           <span>GitOps Review</span>
         </button>
       </nav>
@@ -110,377 +100,376 @@
   <!-- Main Container -->
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
-    <!-- Executive Metrics Grid -->
-    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <!-- Monthly Savings Card -->
-      <div class="glass-card rounded-2xl p-5 border border-slate-800 relative overflow-hidden group hover:border-emerald-500/40 transition">
-        <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl group-hover:bg-emerald-500/20 transition"></div>
-        <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
-          <span>Monthly Cost Recovery</span>
-          <span class="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20">Instant</span>
+    <!-- ================= DASHBOARD / HOME TAB ================= -->
+    <section id="tab-dashboard" class="module-tab-content active space-y-6">
+      <!-- Executive Metrics Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Monthly Savings Card -->
+        <div class="glass-card rounded-2xl p-5 border border-slate-800 relative overflow-hidden group hover:border-emerald-500/40 transition">
+          <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl group-hover:bg-emerald-500/20 transition"></div>
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+            <span>Monthly Cost Recovery</span>
+            <span class="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20">Instant</span>
+          </div>
+          <div class="text-3xl font-extrabold text-white tracking-tight font-mono" id="metricMonthlySavings">$0.00</div>
+          <p class="text-xs text-emerald-400 mt-2 flex items-center gap-1 font-medium">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+            <span id="metricMonthlySavingsRate">0%</span> cloud budget freed
+          </p>
         </div>
-        <div class="text-3xl font-extrabold text-white tracking-tight font-mono" id="metricMonthlySavings">$0.00</div>
-        <p class="text-xs text-emerald-400 mt-2 flex items-center gap-1 font-medium">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
-          <span id="metricMonthlySavingsRate">0%</span> cloud budget freed
-        </p>
+
+        <!-- Annualized ROI Card -->
+        <div class="glass-card rounded-2xl p-5 border border-slate-800 relative overflow-hidden group hover:border-amber-500/40 transition">
+          <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-amber-500/10 rounded-full blur-xl group-hover:bg-amber-500/20 transition"></div>
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+            <span>Annual Projected Savings</span>
+            <span class="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 font-semibold border border-amber-500/20">Annualized</span>
+          </div>
+          <div class="text-3xl font-extrabold text-white tracking-tight font-mono" id="metricAnnualSavings">$0.00</div>
+          <p class="text-xs text-slate-400 mt-2">Recurring annualized financial dividend</p>
+        </div>
+
+        <!-- Inefficiencies Detected Card -->
+        <div class="glass-card rounded-2xl p-5 border border-slate-800 relative overflow-hidden group hover:border-rose-500/40 transition">
+          <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-rose-500/10 rounded-full blur-xl group-hover:bg-rose-500/20 transition"></div>
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+            <span>Cloud Waste Items</span>
+            <span class="px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-400 font-semibold border border-rose-500/20" id="metricSeverityPill">0 Critical</span>
+          </div>
+          <div class="text-3xl font-extrabold text-white tracking-tight font-mono" id="metricWasteCount">0</div>
+          <p class="text-xs text-slate-400 mt-2">Unattached EBS, idle Lambdas & oversized VMs</p>
+        </div>
+
+        <!-- Carbon Offset Card -->
+        <div class="glass-card rounded-2xl p-5 border border-slate-800 relative overflow-hidden group hover:border-teal-500/40 transition">
+          <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-teal-500/10 rounded-full blur-xl group-hover:bg-teal-500/20 transition"></div>
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+            <span>Carbon Footprint Offset</span>
+            <span class="px-2 py-0.5 rounded-md bg-teal-500/10 text-teal-400 font-semibold border border-teal-500/20">Green FinOps</span>
+          </div>
+          <div class="text-3xl font-extrabold text-teal-400 tracking-tight font-mono" id="metricCarbonSavings">0.0 kg</div>
+          <p class="text-xs text-slate-400 mt-2">Estimated CO2e emissions eliminated</p>
+        </div>
       </div>
 
-      <!-- Annualized ROI Card -->
-      <div class="glass-card rounded-2xl p-5 border border-slate-800 relative overflow-hidden group hover:border-amber-500/40 transition">
-        <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-amber-500/10 rounded-full blur-xl group-hover:bg-amber-500/20 transition"></div>
-        <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
-          <span>Annual Projected Savings</span>
-          <span class="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 font-semibold border border-amber-500/20">Annualized</span>
+      <!-- Visual Charts & Pipeline Status Banner -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Donut Chart: Waste by Service -->
+        <div class="glass-card rounded-2xl p-5 border border-slate-800 flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold text-white">Waste Breakdown by Resource Type</h3>
+            <span class="text-[11px] text-slate-400 font-mono">Real-time</span>
+          </div>
+          <div class="relative h-48 flex items-center justify-center">
+            <canvas id="wasteDonutChart"></canvas>
+          </div>
+          <div class="grid grid-cols-2 gap-2 text-xs pt-3 border-t border-slate-800/80 mt-2 text-slate-400" id="donutLegend">
+            <!-- Populated by JS -->
+          </div>
         </div>
-        <div class="text-3xl font-extrabold text-white tracking-tight font-mono" id="metricAnnualSavings">$0.00</div>
-        <p class="text-xs text-slate-400 mt-2">Recurring annualized financial dividend</p>
-      </div>
 
-      <!-- Inefficiencies Detected Card -->
-      <div class="glass-card rounded-2xl p-5 border border-slate-800 relative overflow-hidden group hover:border-rose-500/40 transition">
-        <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-rose-500/10 rounded-full blur-xl group-hover:bg-rose-500/20 transition"></div>
-        <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
-          <span>Cloud Waste Items</span>
-          <span class="px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-400 font-semibold border border-rose-500/20" id="metricSeverityPill">0 Critical</span>
+        <!-- Bar Chart: Before vs After Spend -->
+        <div class="glass-card rounded-2xl p-5 border border-slate-800 flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold text-white">Current vs Optimized Monthly Cost</h3>
+            <span class="text-[11px] text-emerald-400 font-mono font-bold" id="savingsBadge">-$0.00 / mo</span>
+          </div>
+          <div class="relative h-48 flex items-center justify-center">
+            <canvas id="costBarChart"></canvas>
+          </div>
+          <div class="flex items-center justify-between text-xs text-slate-400 pt-3 border-t border-slate-800/80 mt-2">
+            <span>Current: <strong class="text-rose-400 font-mono" id="currSpendText">$0</strong></span>
+            <span>Optimized: <strong class="text-emerald-400 font-mono" id="optSpendText">$0</strong></span>
+          </div>
         </div>
-        <div class="text-3xl font-extrabold text-white tracking-tight font-mono" id="metricWasteCount">0</div>
-        <p class="text-xs text-slate-400 mt-2">Unattached EBS, idle Lambdas & oversized VMs</p>
-      </div>
 
-      <!-- Carbon Offset Card -->
-      <div class="glass-card rounded-2xl p-5 border border-slate-800 relative overflow-hidden group hover:border-teal-500/40 transition">
-        <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-teal-500/10 rounded-full blur-xl group-hover:bg-teal-500/20 transition"></div>
-        <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
-          <span>Carbon Footprint Offset</span>
-          <span class="px-2 py-0.5 rounded-md bg-teal-500/10 text-teal-400 font-semibold border border-teal-500/20">Green FinOps</span>
+        <!-- Quick Action / GitOps Status Banner -->
+        <div class="glass-card rounded-2xl p-5 border border-slate-800 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-sm font-bold text-white">GitOps Pull Request Status</h3>
+              <span class="px-2 py-0.5 text-xs rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono" id="quickPRStatus">OPEN</span>
+            </div>
+            <p class="text-xs text-slate-400 mb-4" id="quickPRDesc">Awaiting reviewer approval before deploying Terraform changes to AWS.</p>
+            
+            <div class="space-y-2 bg-slate-900/60 p-3 rounded-xl border border-slate-800 font-mono text-xs text-slate-300" id="quickPRMeta">
+              <div class="flex justify-between"><span>Branch:</span> <span class="text-amber-400" id="quickBranchName">gitops/remediation</span></div>
+              <div class="flex justify-between"><span>PR Target:</span> <span class="text-slate-400">main</span></div>
+              <div class="flex justify-between"><span>Author:</span> <span class="text-slate-400">finops-hunter[bot]</span></div>
+            </div>
+          </div>
+
+          <div class="pt-4 flex gap-2">
+            <button onclick="switchTab('mod7')" class="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-lg transition text-slate-200">
+              🔍 Inspect Pull Request
+            </button>
+            <button onclick="downloadReport('json')" class="py-2 px-3 bg-slate-800/80 hover:bg-slate-700 text-xs font-semibold rounded-lg transition text-slate-300 flex items-center gap-1">
+              📥 Report
+            </button>
+          </div>
         </div>
-        <div class="text-3xl font-extrabold text-teal-400 tracking-tight font-mono" id="metricCarbonSavings">0.0 kg</div>
-        <p class="text-xs text-slate-400 mt-2">Estimated CO2e emissions eliminated</p>
       </div>
     </section>
 
-    <!-- Visual Charts & Pipeline Status Banner -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <!-- Donut Chart: Waste by Service -->
-      <div class="glass-card rounded-2xl p-5 border border-slate-800 flex flex-col justify-between">
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="text-sm font-bold text-white">Waste Breakdown by Resource Type</h3>
-          <span class="text-[11px] text-slate-400 font-mono">Module 2 & 3</span>
-        </div>
-        <div class="relative h-48 flex items-center justify-center">
-          <canvas id="wasteDonutChart"></canvas>
-        </div>
-        <div class="grid grid-cols-2 gap-2 text-xs pt-3 border-t border-slate-800/80 mt-2 text-slate-400" id="donutLegend">
-          <!-- Populated by JS -->
-        </div>
-      </div>
-
-      <!-- Bar Chart: Before vs After Spend -->
-      <div class="glass-card rounded-2xl p-5 border border-slate-800 flex flex-col justify-between">
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="text-sm font-bold text-white">Current vs Optimized Monthly Cost</h3>
-          <span class="text-[11px] text-emerald-400 font-mono font-bold" id="savingsBadge">-$0.00 / mo</span>
-        </div>
-        <div class="relative h-48 flex items-center justify-center">
-          <canvas id="costBarChart"></canvas>
-        </div>
-        <div class="flex items-center justify-between text-xs text-slate-400 pt-3 border-t border-slate-800/80 mt-2">
-          <span>Current: <strong class="text-rose-400 font-mono" id="currSpendText">$0</strong></span>
-          <span>Optimized: <strong class="text-emerald-400 font-mono" id="optSpendText">$0</strong></span>
-        </div>
-      </div>
-
-      <!-- Quick Action / GitOps Status Banner -->
-      <div class="glass-card rounded-2xl p-5 border border-slate-800 flex flex-col justify-between">
+    <!-- ================= MODULE 1: RESOURCE MONITORING ================= -->
+    <section id="tab-mod1" class="module-tab-content glass-card rounded-2xl p-6 border border-slate-800">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-800">
         <div>
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="text-sm font-bold text-white">GitOps Pull Request Status</h3>
-            <span class="px-2 py-0.5 text-xs rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono" id="quickPRStatus">OPEN</span>
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded-md bg-sky-500/10 text-sky-400 text-xs font-mono font-bold border border-sky-500/20">Monitoring</span>
+            <h2 class="text-base font-bold text-white">Resource Monitoring & Telemetry Collection (FR1)</h2>
           </div>
-          <p class="text-xs text-slate-400 mb-4" id="quickPRDesc">Awaiting reviewer approval before deploying Terraform changes to AWS.</p>
-          
-          <div class="space-y-2 bg-slate-900/60 p-3 rounded-xl border border-slate-800 font-mono text-xs text-slate-300" id="quickPRMeta">
-            <div class="flex justify-between"><span>Branch:</span> <span class="text-amber-400" id="quickBranchName">gitops/remediation</span></div>
-            <div class="flex justify-between"><span>PR Target:</span> <span class="text-slate-400">main</span></div>
-            <div class="flex justify-between"><span>Author:</span> <span class="text-slate-400">finops-hunter[bot]</span></div>
-          </div>
+          <p class="text-xs text-slate-400 mt-1">Collects CloudWatch utilization metrics and inventory status across simulated cloud infrastructure.</p>
         </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-400">Live Monitored:</span>
+          <span class="px-2.5 py-1 rounded-lg bg-slate-800 text-white font-mono text-xs font-bold" id="monitoredCountBadge">0 Resources</span>
+        </div>
+      </div>
 
-        <div class="pt-4 flex gap-2">
-          <button onclick="switchTab('mod7')" class="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-lg transition text-slate-200">
-            🔍 Inspect Pull Request
+      <!-- Resources Table -->
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs text-slate-300">
+          <thead class="text-[11px] uppercase bg-slate-900/60 text-slate-400 border-b border-slate-800">
+            <tr>
+              <th class="py-3 px-4">Resource ID / Name</th>
+              <th class="py-3 px-4">Type</th>
+              <th class="py-3 px-4">State</th>
+              <th class="py-3 px-4">Hardware Specs</th>
+              <th class="py-3 px-4">CloudWatch Metrics (30-day)</th>
+              <th class="py-3 px-4">Tags</th>
+            </tr>
+          </thead>
+          <tbody id="monitoringTableBody" class="divide-y divide-slate-800/60">
+            <!-- Rendered via app.js -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================= MODULE 2: WASTE DETECTION ================= -->
+    <section id="tab-mod2" class="module-tab-content glass-card rounded-2xl p-6 border border-slate-800">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-800">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded-md bg-rose-500/10 text-rose-400 text-xs font-mono font-bold border border-rose-500/20">Waste Detection</span>
+            <h2 class="text-base font-bold text-white">Multi-Vector Cloud Waste Detection (FR2 & FR3)</h2>
+          </div>
+          <p class="text-xs text-slate-400 mt-1">Applies heuristic rule engines to pinpoint unattached storage, idle serverless Lambdas, and oversized VMs.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-400">Detected:</span>
+          <span class="px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 font-mono text-xs font-bold" id="wasteCountBadge">0 Findings</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="wasteFindingsContainer">
+        <!-- Rendered via app.js -->
+      </div>
+    </section>
+
+    <!-- ================= MODULE 3: COST & SAVINGS ESTIMATION ================= -->
+    <section id="tab-mod3" class="module-tab-content glass-card rounded-2xl p-6 border border-slate-800">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-800">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 text-xs font-mono font-bold border border-emerald-500/20">Cost & Savings</span>
+            <h2 class="text-base font-bold text-white">Cost Modeling & Savings Engine (FR4)</h2>
+          </div>
+          <p class="text-xs text-slate-400 mt-1">Calculates AWS SKU pricing deltas, monthly spend reductions, annualized ROI, and green carbon offsets.</p>
+        </div>
+        <button onclick="downloadReport('csv')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition">
+          <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Export Cost CSV
+        </button>
+      </div>
+
+      <!-- Cost Breakdown Table -->
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs text-slate-300">
+          <thead class="text-[11px] uppercase bg-slate-900/60 text-slate-400 border-b border-slate-800">
+            <tr>
+              <th class="py-3 px-4">Resource</th>
+              <th class="py-3 px-4">Category</th>
+              <th class="py-3 px-4">Pricing Formula Breakdown</th>
+              <th class="py-3 px-4">Current / Mo</th>
+              <th class="py-3 px-4">Optimized / Mo</th>
+              <th class="py-3 px-4">Monthly Savings</th>
+              <th class="py-3 px-4">Carbon Impact</th>
+            </tr>
+          </thead>
+          <tbody id="costTableBody" class="divide-y divide-slate-800/60">
+            <!-- Rendered via app.js -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================= MODULE 4: AI RECOMMENDATION ================= -->
+    <section id="tab-mod4" class="module-tab-content glass-card rounded-2xl p-6 border border-slate-800">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-800">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded-md bg-purple-500/10 text-purple-400 text-xs font-mono font-bold border border-purple-500/20">Bedrock AI</span>
+            <h2 class="text-base font-bold text-white">Amazon Bedrock Nova Lite Advisor (FR5 & FR6)</h2>
+          </div>
+          <p class="text-xs text-slate-400 mt-1">Foundation AI model (amazon.nova-lite-v1:0) synthesizes technical rationale, risk categorization, and zero-downtime rollback procedures.</p>
+        </div>
+        <div class="flex items-center gap-2 text-xs bg-purple-950/40 border border-purple-800/40 rounded-lg px-3 py-1.5 text-purple-300">
+          <span class="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
+          <span>Model: amazon.nova-lite-v1:0</span>
+        </div>
+      </div>
+
+      <div class="space-y-4" id="aiRecommendationsContainer">
+        <!-- Rendered via app.js -->
+      </div>
+    </section>
+
+    <!-- ================= MODULE 5: REPORT STORAGE ================= -->
+    <section id="tab-mod5" class="module-tab-content glass-card rounded-2xl p-6 border border-slate-800">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-800">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded-md bg-amber-500/10 text-amber-400 text-xs font-mono font-bold border border-amber-500/20">Report Storage</span>
+            <h2 class="text-base font-bold text-white">Report Storage & Audit Ledger (FR7 & FR8)</h2>
+          </div>
+          <p class="text-xs text-slate-400 mt-1">Stores immutable audit records in Amazon DynamoDB and publishes formatted reports to Amazon S3 buckets.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="downloadReport('markdown')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition">
+            📄 Download Markdown Report
           </button>
-          <button onclick="downloadReport('json')" class="py-2 px-3 bg-slate-800/80 hover:bg-slate-700 text-xs font-semibold rounded-lg transition text-slate-300 flex items-center gap-1">
-            📥 Report
+          <button onclick="downloadReport('json')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition">
+            📦 Download S3 JSON
           </button>
         </div>
       </div>
-    </div>
 
-    <!-- MODULE-WISE TAB PANELS -->
-    <div class="space-y-6">
-
-      <!-- ================= MODULE 1: RESOURCE MONITORING ================= -->
-      <section id="tab-mod1" class="module-tab-content active glass-card rounded-2xl p-6 border border-slate-800">
-        <div class="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-800">
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="px-2.5 py-0.5 rounded-md bg-sky-500/10 text-sky-400 text-xs font-mono font-bold border border-sky-500/20">Module 1</span>
-              <h2 class="text-base font-bold text-white">Resource Monitoring & Telemetry Collection (FR1)</h2>
-            </div>
-            <p class="text-xs text-slate-400 mt-1">Collects CloudWatch utilization metrics and inventory status across simulated cloud infrastructure.</p>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- S3 Artifacts Viewer -->
+        <div class="bg-slate-900/60 rounded-xl p-4 border border-slate-800">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-bold text-slate-200 flex items-center gap-2">
+              <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+              Amazon S3 Bucket: <span class="font-mono text-amber-300">s3://finops-waste-hunter-reports/</span>
+            </span>
           </div>
+          <div class="bg-slate-950 p-3 rounded-lg border border-slate-800/80 font-mono text-[11px] text-slate-400 space-y-2" id="s3FileList">
+            <!-- S3 files -->
+          </div>
+        </div>
+
+        <!-- DynamoDB Audit Ledger -->
+        <div class="bg-slate-900/60 rounded-xl p-4 border border-slate-800">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-bold text-slate-200 flex items-center gap-2">
+              <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2 1.5 3 3.5 3h9c2 0 3.5-1 3.5-3V7M4 7c0-2 1.5-3 3.5-3h9c2 0 3.5 1 3.5 3M4 7h16m-8 4v6"/></svg>
+              Amazon DynamoDB Table: <span class="font-mono text-blue-300">FinOpsAuditTrail</span>
+            </span>
+          </div>
+          <div class="overflow-y-auto max-h-56">
+            <table class="w-full text-left text-[11px] font-mono text-slate-300">
+              <thead class="bg-slate-950 text-slate-400">
+                <tr>
+                  <th class="p-2">Run ID</th>
+                  <th class="p-2">Findings</th>
+                  <th class="p-2">Savings / Mo</th>
+                  <th class="p-2">Status</th>
+                </tr>
+              </thead>
+              <tbody id="dynamoDbTableBody" class="divide-y divide-slate-800/80">
+                <!-- DynamoDB records -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= MODULE 6: TERRAFORM REMEDIATION ================= -->
+    <section id="tab-mod6" class="module-tab-content glass-card rounded-2xl p-6 border border-slate-800">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-800">
+        <div>
           <div class="flex items-center gap-2">
-            <span class="text-xs text-slate-400">Live Monitored:</span>
-            <span class="px-2.5 py-1 rounded-lg bg-slate-800 text-white font-mono text-xs font-bold" id="monitoredCountBadge">0 Resources</span>
+            <span class="px-2.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 text-xs font-mono font-bold border border-indigo-500/20">Terraform Remediation</span>
+            <h2 class="text-base font-bold text-white">Terraform Infrastructure as Code Patches (FR9)</h2>
           </div>
+          <p class="text-xs text-slate-400 mt-1">Converts approved AI recommendations directly into validated HCL changes and unified git diffs.</p>
         </div>
-
-        <!-- Resources Table -->
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs text-slate-300">
-            <thead class="text-[11px] uppercase bg-slate-900/60 text-slate-400 border-b border-slate-800">
-              <tr>
-                <th class="py-3 px-4">Resource ID / Name</th>
-                <th class="py-3 px-4">Type</th>
-                <th class="py-3 px-4">State</th>
-                <th class="py-3 px-4">Hardware Specs</th>
-                <th class="py-3 px-4">CloudWatch Metrics (30-day)</th>
-                <th class="py-3 px-4">Tags</th>
-              </tr>
-            </thead>
-            <tbody id="monitoringTableBody" class="divide-y divide-slate-800/60">
-              <!-- Rendered via app.js -->
-            </tbody>
-          </table>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-400">Patches Generated:</span>
+          <span class="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 font-mono text-xs font-bold" id="patchCountBadge">0 Patches</span>
         </div>
-      </section>
+      </div>
 
-      <!-- ================= MODULE 2: WASTE DETECTION ================= -->
-      <section id="tab-mod2" class="module-tab-content glass-card rounded-2xl p-6 border border-slate-800">
-        <div class="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-800">
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="px-2.5 py-0.5 rounded-md bg-rose-500/10 text-rose-400 text-xs font-mono font-bold border border-rose-500/20">Module 2</span>
-              <h2 class="text-base font-bold text-white">Multi-Vector Cloud Waste Detection (FR2 & FR3)</h2>
-            </div>
-            <p class="text-xs text-slate-400 mt-1">Applies heuristic rule engines to pinpoint unattached storage, idle serverless Lambdas, and oversized VMs.</p>
-          </div>
+      <!-- Unified Diff Viewer -->
+      <div class="bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
+        <div class="bg-slate-900/80 px-4 py-2 border-b border-slate-800 flex items-center justify-between">
+          <span class="text-xs font-mono text-slate-300 flex items-center gap-2">
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+            sample_infrastructure/main.tf (Unified Diff)
+          </span>
+          <span class="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">SYNTAX_VALIDATED</span>
+        </div>
+        <pre class="p-4 text-[12px] font-mono leading-relaxed overflow-x-auto text-slate-300 bg-slate-950" id="terraformDiffViewer">
+          <!-- Diff rendered by JS -->
+        </pre>
+      </div>
+    </section>
+
+    <!-- ================= MODULE 7: GITOPS REVIEW ================= -->
+    <section id="tab-mod7" class="module-tab-content glass-card rounded-2xl p-6 border border-slate-800">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-800">
+        <div>
           <div class="flex items-center gap-2">
-            <span class="text-xs text-slate-400">Detected:</span>
-            <span class="px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 font-mono text-xs font-bold" id="wasteCountBadge">0 Findings</span>
+            <span class="px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 text-xs font-mono font-bold border border-emerald-500/20">GitOps Review</span>
+            <h2 class="text-base font-bold text-white">GitOps Review & Pull Request Approval (FR10 & FR11)</h2>
           </div>
+          <p class="text-xs text-slate-400 mt-1">Enforces peer review before deployment. Changes are submitted to isolated branches and protected by automated CI checks.</p>
         </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="wasteFindingsContainer">
-          <!-- Rendered via app.js -->
-        </div>
-      </section>
-
-      <!-- ================= MODULE 3: COST & SAVINGS ESTIMATION ================= -->
-      <section id="tab-mod3" class="module-tab-content glass-card rounded-2xl p-6 border border-slate-800">
-        <div class="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-800">
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 text-xs font-mono font-bold border border-emerald-500/20">Module 3</span>
-              <h2 class="text-base font-bold text-white">Cost Modeling & Savings Engine (FR4)</h2>
-            </div>
-            <p class="text-xs text-slate-400 mt-1">Calculates AWS SKU pricing deltas, monthly spend reductions, annualized ROI, and green carbon offsets.</p>
-          </div>
-          <button onclick="downloadReport('csv')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition">
-            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-            Export Cost CSV
+        <div class="flex items-center gap-2" id="prActionButtons">
+          <button onclick="approveCurrentPR()" id="btnApprovePR" class="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center gap-1.5 shadow-lg shadow-emerald-600/20">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            Approve PR
+          </button>
+          <button onclick="mergeCurrentPR()" id="btnMergePR" class="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition flex items-center gap-1.5 shadow-lg shadow-indigo-600/20">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+            Merge & Apply to Cloud
           </button>
         </div>
+      </div>
 
-        <!-- Cost Breakdown Table -->
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs text-slate-300">
-            <thead class="text-[11px] uppercase bg-slate-900/60 text-slate-400 border-b border-slate-800">
-              <tr>
-                <th class="py-3 px-4">Resource</th>
-                <th class="py-3 px-4">Category</th>
-                <th class="py-3 px-4">Pricing Formula Breakdown</th>
-                <th class="py-3 px-4">Current / Mo</th>
-                <th class="py-3 px-4">Optimized / Mo</th>
-                <th class="py-3 px-4">Monthly Savings</th>
-                <th class="py-3 px-4">Carbon Impact</th>
-              </tr>
-            </thead>
-            <tbody id="costTableBody" class="divide-y divide-slate-800/60">
-              <!-- Rendered via app.js -->
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- ================= MODULE 4: AI RECOMMENDATION ================= -->
-      <section id="tab-mod4" class="module-tab-content glass-card rounded-2xl p-6 border border-slate-800">
-        <div class="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-800">
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="px-2.5 py-0.5 rounded-md bg-purple-500/10 text-purple-400 text-xs font-mono font-bold border border-purple-500/20">Module 4</span>
-              <h2 class="text-base font-bold text-white">Amazon Bedrock Nova Lite Advisor (FR5 & FR6)</h2>
-            </div>
-            <p class="text-xs text-slate-400 mt-1">Foundation AI model (amazon.nova-lite-v1:0) synthesizes technical rationale, risk categorization, and zero-downtime rollback procedures.</p>
-          </div>
-          <div class="flex items-center gap-2 text-xs bg-purple-950/40 border border-purple-800/40 rounded-lg px-3 py-1.5 text-purple-300">
-            <span class="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
-            <span>Model: amazon.nova-lite-v1:0</span>
-          </div>
-        </div>
-
-        <div class="space-y-4" id="aiRecommendationsContainer">
-          <!-- Rendered via app.js -->
-        </div>
-      </section>
-
-      <!-- ================= MODULE 5: REPORT STORAGE ================= -->
-      <section id="tab-mod5" class="module-tab-content glass-card rounded-2xl p-6 border border-slate-800">
-        <div class="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-800">
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="px-2.5 py-0.5 rounded-md bg-amber-500/10 text-amber-400 text-xs font-mono font-bold border border-amber-500/20">Module 5</span>
-              <h2 class="text-base font-bold text-white">Report Storage & Audit Ledger (FR7 & FR8)</h2>
-            </div>
-            <p class="text-xs text-slate-400 mt-1">Stores immutable audit records in Amazon DynamoDB and publishes formatted reports to Amazon S3 buckets.</p>
-          </div>
+      <!-- Pull Request Card -->
+      <div class="bg-slate-900/70 rounded-xl border border-slate-800 p-5 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
           <div class="flex items-center gap-2">
-            <button onclick="downloadReport('markdown')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition">
-              📄 Download Markdown Report
-            </button>
-            <button onclick="downloadReport('json')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition">
-              📦 Download S3 JSON
-            </button>
+            <span class="px-2.5 py-1 rounded-full text-xs font-bold font-mono" id="prStatusBadge">OPEN</span>
+            <h3 class="text-sm font-bold text-white" id="prTitle">Pull Request Loading...</h3>
+          </div>
+          <div class="text-xs font-mono text-slate-400" id="prMetaHeader">
+            #PR-43 by finops-hunter[bot] into <span class="text-amber-400">main</span>
           </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <!-- S3 Artifacts Viewer -->
-          <div class="bg-slate-900/60 rounded-xl p-4 border border-slate-800">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-bold text-slate-200 flex items-center gap-2">
-                <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-                Amazon S3 Bucket: <span class="font-mono text-amber-300">s3://finops-waste-hunter-reports/</span>
-              </span>
-            </div>
-            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800/80 font-mono text-[11px] text-slate-400 space-y-2" id="s3FileList">
-              <!-- S3 files -->
-            </div>
-          </div>
-
-          <!-- DynamoDB Audit Ledger -->
-          <div class="bg-slate-900/60 rounded-xl p-4 border border-slate-800">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-bold text-slate-200 flex items-center gap-2">
-                <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2 1.5 3 3.5 3h9c2 0 3.5-1 3.5-3V7M4 7c0-2 1.5-3 3.5-3h9c2 0 3.5 1 3.5 3M4 7h16m-8 4v6"/></svg>
-                Amazon DynamoDB Table: <span class="font-mono text-blue-300">FinOpsAuditTrail</span>
-              </span>
-            </div>
-            <div class="overflow-y-auto max-h-56">
-              <table class="w-full text-left text-[11px] font-mono text-slate-300">
-                <thead class="bg-slate-950 text-slate-400">
-                  <tr>
-                    <th class="p-2">Run ID</th>
-                    <th class="p-2">Findings</th>
-                    <th class="p-2">Savings / Mo</th>
-                    <th class="p-2">Status</th>
-                  </tr>
-                </thead>
-                <tbody id="dynamoDbTableBody" class="divide-y divide-slate-800/80">
-                  <!-- DynamoDB records -->
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ================= MODULE 6: TERRAFORM REMEDIATION ================= -->
-      <section id="tab-mod6" class="module-tab-content glass-card rounded-2xl p-6 border border-slate-800">
-        <div class="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-800">
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="px-2.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 text-xs font-mono font-bold border border-indigo-500/20">Module 6</span>
-              <h2 class="text-base font-bold text-white">Terraform Infrastructure as Code Patches (FR9)</h2>
-            </div>
-            <p class="text-xs text-slate-400 mt-1">Converts approved AI recommendations directly into validated HCL changes and unified git diffs.</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="text-xs text-slate-400">Patches Generated:</span>
-            <span class="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 font-mono text-xs font-bold" id="patchCountBadge">0 Patches</span>
+        <!-- Automated CI Checks Status -->
+        <div>
+          <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Automated CI/CD Validation Pipeline</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs font-mono" id="prChecksList">
+            <!-- CI checks -->
           </div>
         </div>
 
-        <!-- Unified Diff Viewer -->
-        <div class="bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
-          <div class="bg-slate-900/80 px-4 py-2 border-b border-slate-800 flex items-center justify-between">
-            <span class="text-xs font-mono text-slate-300 flex items-center gap-2">
-              <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
-              sample_infrastructure/main.tf (Unified Diff)
-            </span>
-            <span class="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">SYNTAX_VALIDATED</span>
-          </div>
-          <pre class="p-4 text-[12px] font-mono leading-relaxed overflow-x-auto text-slate-300 bg-slate-950" id="terraformDiffViewer">
-            <!-- Diff rendered by JS -->
-          </pre>
-        </div>
-      </section>
-
-      <!-- ================= MODULE 7: GITOPS REVIEW ================= -->
-      <section id="tab-mod7" class="module-tab-content glass-card rounded-2xl p-6 border border-slate-800">
-        <div class="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-800">
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 text-xs font-mono font-bold border border-emerald-500/20">Module 7</span>
-              <h2 class="text-base font-bold text-white">GitOps Review & Pull Request Approval (FR10 & FR11)</h2>
-            </div>
-            <p class="text-xs text-slate-400 mt-1">Enforces peer review before deployment. Changes are submitted to isolated branches and protected by automated CI checks.</p>
-          </div>
-          <div class="flex items-center gap-2" id="prActionButtons">
-            <button onclick="approveCurrentPR()" id="btnApprovePR" class="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center gap-1.5 shadow-lg shadow-emerald-600/20">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-              Approve PR
-            </button>
-            <button onclick="mergeCurrentPR()" id="btnMergePR" class="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition flex items-center gap-1.5 shadow-lg shadow-indigo-600/20">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
-              Merge & Apply to Cloud
-            </button>
+        <!-- PR Audit Trail / Timeline -->
+        <div>
+          <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Audit Trail & Deployment Log</h4>
+          <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-[11px] text-slate-400 space-y-1" id="prAuditTrail">
+            <!-- Audit messages -->
           </div>
         </div>
+      </div>
+    </section>
 
-        <!-- Pull Request Card -->
-        <div class="bg-slate-900/70 rounded-xl border border-slate-800 p-5 space-y-4">
-          <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
-            <div class="flex items-center gap-2">
-              <span class="px-2.5 py-1 rounded-full text-xs font-bold font-mono" id="prStatusBadge">OPEN</span>
-              <h3 class="text-sm font-bold text-white" id="prTitle">Pull Request Loading...</h3>
-            </div>
-            <div class="text-xs font-mono text-slate-400" id="prMetaHeader">
-              #PR-43 by finops-hunter[bot] into <span class="text-amber-400">main</span>
-            </div>
-          </div>
-
-          <!-- Automated CI Checks Status -->
-          <div>
-            <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Automated CI/CD Validation Pipeline</h4>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs font-mono" id="prChecksList">
-              <!-- CI checks -->
-            </div>
-          </div>
-
-          <!-- PR Audit Trail / Timeline -->
-          <div>
-            <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Audit Trail & Deployment Log</h4>
-            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-[11px] text-slate-400 space-y-1" id="prAuditTrail">
-              <!-- Audit messages -->
-            </div>
-          </div>
-        </div>
-      </section>
-
-    </div>
   </main>
 
   <!-- Footer -->
