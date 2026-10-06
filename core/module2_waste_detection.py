@@ -1,4 +1,4 @@
-﻿"""
+"""
 Module 2: Waste Detection
 Detects unattached storage, idle serverless functions, oversized resources, and networking waste.
 ISWE309L Cloud Computing - Course Project Review-1
@@ -67,16 +67,20 @@ class WasteDetectionModule:
 
     def _check_ebs_waste(self, res: CloudResource) -> WasteFinding | None:
         metrics = res.metrics
+        specs = res.specs
         days_unattached = metrics.get("days_unattached", 0)
         is_unattached = (
+            specs.get("is_unattached") is True or
             res.state == "available" or
             metrics.get("attachment_status") == "unattached" or
             days_unattached > 0
         )
 
-        if is_unattached and days_unattached >= 7:
-            size_gb = res.specs.get("size_gb", 0)
-            vol_type = res.specs.get("volume_type", "gp3")
+        # Flag unattached volumes in either real AWS or simulation (where days >= 7)
+        if is_unattached:
+            size_gb = specs.get("size_gb", 0)
+            vol_type = specs.get("volume_type", "gp3")
+            days_label = f" for {days_unattached} days" if days_unattached > 0 else ""
             severity = Severity.CRITICAL if (size_gb >= 500 or days_unattached >= 30) else Severity.HIGH
 
             return WasteFinding(
@@ -87,36 +91,41 @@ class WasteDetectionModule:
                 waste_category=WasteCategory.UNATTACHED_STORAGE,
                 severity=severity,
                 description=(
-                    f"EBS Volume '{res.name}' ({size_gb} GB {vol_type}) has been unattached for "
-                    f"{days_unattached} days, accruing dormant storage and IOPS charges without providing value."
+                    f"EBS Volume '{res.name}' ({size_gb} GB {vol_type}) is currently unattached{days_label}, "
+                    f"accruing dormant provisioned storage charges without compute attachment."
                 ),
-                current_specs=f"{size_gb} GB {vol_type} (Unattached {days_unattached} days)",
+                current_specs=f"{size_gb} GB {vol_type} (Unattached)",
                 recommended_specs="Snapshot & Terminate Volume (Reclaim 100% Cost)",
                 confidence_score=0.99,
                 metrics_summary={
                     "days_unattached": days_unattached,
                     "size_gb": size_gb,
                     "volume_type": vol_type,
-                    "read_iops": metrics.get("read_iops_avg", 0),
-                    "write_iops": metrics.get("write_iops_avg", 0)
+                    "is_unattached": True
                 }
             )
         return None
 
     def _check_lambda_waste(self, res: CloudResource) -> WasteFinding | None:
         metrics = res.metrics
-        invocations = metrics.get("invocations_30d", 0)
+        invocations = metrics.get("invocations_30d")
+        if invocations is None:
+            invocations = metrics.get("invocations_period_sum")
+
+        # Do not label as waste if metrics were not available or never collected
+        if invocations is None:
+            return None
+
         last_invoked_days = metrics.get("last_invoked_days_ago", 0)
         prov_concurrency = res.specs.get("provisioned_concurrency", 0)
 
-        if invocations == 0 and last_invoked_days >= 30:
+        if invocations == 0:
             severity = Severity.HIGH if prov_concurrency > 0 else Severity.MEDIUM
             desc = (
-                f"Serverless Lambda '{res.name}' has 0 invocations in the past 30 days "
-                f"(last invoked {last_invoked_days} days ago)."
+                f"Serverless Lambda '{res.name}' has 0 invocations over the evaluated period."
             )
             if prov_concurrency > 0:
-                desc += f" It maintains {prov_concurrency} allocated provisioned concurrency units incurring 24/7 idle fees."
+                desc += f" It maintains {prov_concurrency} provisioned concurrency units incurring 24/7 idle fees."
 
             return WasteFinding(
                 id=f"waste-lmb-{res.name[:8]}-{uuid.uuid4().hex[:4]}",
@@ -130,7 +139,7 @@ class WasteDetectionModule:
                 recommended_specs="Deprecate & Remove Concurrency / Delete Function",
                 confidence_score=0.96,
                 metrics_summary={
-                    "invocations_30d": invocations,
+                    "invocations": invocations,
                     "last_invoked_days": last_invoked_days,
                     "provisioned_concurrency": prov_concurrency
                 }
@@ -138,13 +147,37 @@ class WasteDetectionModule:
         return None
 
     def _check_ec2_waste(self, res: CloudResource) -> WasteFinding | None:
+        inst_type = res.specs.get("instance_type", "t3.micro")
+
+        # Stopped instances incur persistent EBS storage and IP allocation fees
+        if res.state == "stopped":
+            return WasteFinding(
+                id=f"waste-ec2-stopped-{res.id[-8:]}",
+                resource_id=res.id,
+                resource_name=res.name,
+                resource_type=ResourceType.EC2,
+                waste_category=WasteCategory.OVERSIZED_COMPUTE,
+                severity=Severity.MEDIUM,
+                description=(
+                    f"EC2 Instance '{res.name}' ({inst_type}) is in 'stopped' state while continuing to incur "
+                    f"underlying EBS volume storage reservation costs."
+                ),
+                current_specs=f"{inst_type} (Stopped)",
+                recommended_specs="Snapshot EBS root volume and Terminate stopped instance if decommissioned",
+                confidence_score=0.95,
+                metrics_summary={"state": "stopped", "instance_type": inst_type}
+            )
+
         if res.state != "running":
             return None
 
         metrics = res.metrics
-        cpu_avg = metrics.get("cpu_utilization_avg", 50.0)
+        cpu_avg = metrics.get("cpu_utilization_avg")
         cpu_max = metrics.get("cpu_utilization_max", 100.0)
-        inst_type = res.specs.get("instance_type", "t3.micro")
+
+        # Do not label as waste if CPU metrics are unavailable
+        if cpu_avg is None:
+            return None
 
         # Flag if avg CPU is below 10% and peak is below 20%
         if cpu_avg < 10.0 and cpu_max < 20.0:
@@ -160,7 +193,7 @@ class WasteDetectionModule:
                     severity=severity,
                     description=(
                         f"EC2 Instance '{res.name}' ({inst_type}) is severely underutilized with "
-                        f"average CPU of {cpu_avg}% (peak: {cpu_max}%) over a 30-day evaluation period."
+                        f"average CPU of {cpu_avg}% (peak: {cpu_max}%) over the evaluation period."
                     ),
                     current_specs=f"{inst_type} ({res.specs.get('vcpus', '?')} vCPU, {res.specs.get('ram_gb', '?')}GB RAM)",
                     recommended_specs=f"Downsize to {recommended_type} (Right-sizing)",
@@ -176,7 +209,12 @@ class WasteDetectionModule:
 
     def _check_eip_waste(self, res: CloudResource) -> WasteFinding | None:
         days = res.metrics.get("days_unassociated", 0)
-        if res.state == "unassociated" or days > 0:
+        is_unassoc = (
+            res.state == "unassociated" or
+            res.specs.get("is_associated") is False or
+            days > 0
+        )
+        if is_unassoc:
             return WasteFinding(
                 id=f"waste-eip-{res.id[-8:]}",
                 resource_id=res.id,
@@ -186,7 +224,7 @@ class WasteDetectionModule:
                 severity=Severity.MEDIUM,
                 description=(
                     f"Elastic IP '{res.specs.get('public_ip', res.id)}' is allocated but not associated "
-                    f"with any running instance for {days} days, incurring AWS idle address penalties."
+                    f"with any running instance, incurring AWS unassociated IPv4 address fees."
                 ),
                 current_specs=f"Allocated Static IPv4: {res.specs.get('public_ip', res.id)}",
                 recommended_specs="Release unassociated Elastic IP address",

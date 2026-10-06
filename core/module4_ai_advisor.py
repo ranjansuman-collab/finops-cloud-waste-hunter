@@ -1,132 +1,149 @@
-﻿"""
+"""
 Module 4: AI Recommendation Engine
-Utilizes Amazon Bedrock Nova Lite to analyze detected waste and generate optimization recommendations.
+Delegates to AWSBedrockAdvisorService in LIVE AWS mode for real Bedrock analysis.
+Falls back to built-in intelligent FinOps reasoning only in SIMULATION mode.
+
 ISWE309L Cloud Computing - Course Project Review-1
 Team: Vivek Pandey (24MIS0216) & S. Hemal (24MIS0050)
+
+SAFETY:
+- Bedrock is analysis/recommendation ONLY.
+- Bedrock NEVER modifies AWS resources.
+- Bedrock NEVER executes Terraform or terraform apply.
+- No AWS credentials or secrets are sent to Bedrock.
 """
 
-import os
-import json
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
+
 from core.models import (
     WasteFinding,
     CostFinding,
     AIRecommendation,
-    ResourceType,
-    WasteCategory
+    WasteCategory,
 )
+from core.aws.connection import (
+    STATUS_CONNECTED,
+    STATUS_CREDENTIALS_MISSING,
+    STATUS_NO_PERMISSION,
+    STATUS_ACCOUNT_VERIFICATION_REQUIRED,
+    STATUS_ERROR,
+)
+from core.aws.bedrock import STATUS_MODEL_NOT_AVAILABLE
 
 logger = logging.getLogger("finops.module4")
 
 
 class AIAdvisorModule:
     """
-    Implements FR5 & FR6:
-    Interacts with Amazon Bedrock Nova Lite (amazon.nova-lite-v1:0) to synthesize
-    intelligent remediation recommendations, risk profiles, and rollback plans.
+    Implements FR5 & FR6.
+
+    LIVE mode  — delegates to AWSBedrockAdvisorService which calls Amazon Bedrock
+                 over the standard Boto3 credential chain.  If Bedrock is
+                 unavailable, an explicit error status is surfaced; fake output
+                 is NEVER returned in live mode.
+
+    SIMULATION — uses the built-in intelligent FinOps reasoning engine that
+                 produces realistic static recommendations without any real AWS
+                 calls or Bedrock invocations.
     """
 
-    MODEL_ID = "amazon.nova-lite-v1:0"
+    # Default model exposed for informational purposes; actual value is read at
+    # runtime from FINOPS_BEDROCK_MODEL / BEDROCK_MODEL_ID env vars inside
+    # AWSBedrockAdvisorService.
+    DEFAULT_MODEL_ID = "amazon.nova-lite-v1:0"
 
-    def __init__(self, region_name: str = "us-east-1"):
+    def __init__(self, region_name: str = "ap-southeast-2", use_live_aws: bool = False):
         self.region_name = region_name
-        self.bedrock_client = self._init_bedrock_client()
+        self.use_live_aws = use_live_aws
 
-    def _init_bedrock_client(self):
-        if os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"):
-            try:
-                import boto3
-                return boto3.client("bedrock-runtime", region_name=self.region_name)
-            except Exception as e:
-                logger.warning(f"Could not initialize Boto3 Bedrock client: {e}")
-        return None
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def generate_recommendations(
         self,
         findings: List[WasteFinding],
-        costs: Optional[List[CostFinding]] = None
+        costs: Optional[List[CostFinding]] = None,
+        model_id: Optional[str] = None,
     ) -> List[AIRecommendation]:
+        """
+        Generates recommendations for every waste finding.
+
+        In LIVE mode the entire batch is delegated to AWSBedrockAdvisorService.
+        The service enforces the standard Boto3 credential chain and the FinOps
+        safety prompt, and returns explicit status errors when Bedrock cannot be
+        reached.
+
+        In SIMULATION mode local intelligent reasoning is used; Bedrock is
+        never contacted.
+        """
+        if not findings:
+            return []
+
+        if self.use_live_aws:
+            return self._generate_via_bedrock(findings, costs, model_id=model_id)
+
+        # Simulation / demo mode: safe local reasoning
         cost_map = {c.finding_id: c for c in (costs or [])}
-        recommendations: List[AIRecommendation] = []
+        return [
+            self._generate_intelligent_recommendation(f, cost_map.get(f.id))
+            for f in findings
+        ]
 
-        for finding in findings:
-            cost = cost_map.get(finding.id)
-            rec = self._analyze_with_nova_lite(finding, cost)
-            recommendations.append(rec)
+    # ------------------------------------------------------------------
+    # Live Bedrock path
+    # ------------------------------------------------------------------
 
-        return recommendations
-
-    def _analyze_with_nova_lite(
+    def _generate_via_bedrock(
         self,
-        finding: WasteFinding,
-        cost: Optional[CostFinding] = None
-    ) -> AIRecommendation:
+        findings: List[WasteFinding],
+        costs: Optional[List[CostFinding]],
+        model_id: Optional[str] = None,
+    ) -> List[AIRecommendation]:
         """
-        Calls Amazon Bedrock Nova Lite if available, or employs the built-in
-        specialized FinOps reasoning engine adhering to Nova Lite prompt guidelines.
+        Calls AWSBedrockAdvisorService to get real recommendations.
+        If Bedrock cannot be reached, raises RuntimeError with the status code
+        so the caller (engine or endpoint) can surface an explicit error rather
+        than silently returning fake output.
         """
-        if self.bedrock_client:
-            try:
-                return self._invoke_live_bedrock(finding, cost)
-            except Exception as ex:
-                logger.warning(f"Bedrock Nova Lite API invocation failed ({ex}). Falling back to local reasoning.")
+        from core.aws.bedrock import AWSBedrockAdvisorService
 
-        return self._generate_intelligent_recommendation(finding, cost)
-
-    def _invoke_live_bedrock(
-        self,
-        finding: WasteFinding,
-        cost: Optional[CostFinding] = None
-    ) -> AIRecommendation:
-        prompt = (
-            f"You are a FinOps expert analyzing cloud waste. "
-            f"Resource: {finding.resource_name} ({finding.resource_type})\n"
-            f"Finding: {finding.description}\n"
-            f"Monthly Savings: ${cost.monthly_savings if cost else 0:.2f}\n\n"
-            "Return JSON matching: {title, executive_summary, risk_level, rationale, steps_to_remediate, rollback_plan, confidence_score}"
+        svc = AWSBedrockAdvisorService(
+            region_name=self.region_name,
+            model_id=model_id,
+        )
+        result = svc.generate_all_recommendations(
+            findings=findings,
+            costs=costs,
+            region_name=self.region_name,
+            model_id=model_id,
         )
 
-        body = json.dumps({
-            "inputText": prompt,
-            "textGenerationConfig": {
-                "maxTokenCount": 800,
-                "temperature": 0.2,
-                "topP": 0.9
-            }
-        })
+        status = result.get("status", STATUS_ERROR)
 
-        resp = self.bedrock_client.invoke_model(
-            modelId=self.MODEL_ID,
-            body=body,
-            contentType="application/json",
-            accept="application/json"
-        )
-        response_body = json.loads(resp.get("body").read())
-        raw_text = response_body.get("results", [{}])[0].get("outputText", "")
-
-        try:
-            parsed = json.loads(raw_text)
-            return AIRecommendation(
-                finding_id=finding.id,
-                resource_id=finding.resource_id,
-                resource_name=finding.resource_name,
-                title=parsed.get("title", f"Optimize {finding.resource_name}"),
-                executive_summary=parsed.get("executive_summary", ""),
-                risk_level=parsed.get("risk_level", "Low Risk"),
-                rationale=parsed.get("rationale", ""),
-                steps_to_remediate=parsed.get("steps_to_remediate", []),
-                rollback_plan=parsed.get("rollback_plan", ""),
-                confidence_score=float(parsed.get("confidence_score", 0.95)),
-                model_used=self.MODEL_ID
+        # Any status other than CONNECTED with at least one recommendation is an error.
+        if status != STATUS_CONNECTED or not result.get("recommendations"):
+            if result.get("recommendations"):
+                # Partial success: some findings got recommendations, some failed.
+                # Convert successfully returned dicts back to AIRecommendation objects.
+                return [AIRecommendation(**r) for r in result["recommendations"]]
+            # Total failure — raise so the caller can communicate the real status.
+            errors = result.get("errors") or []
+            raise RuntimeError(
+                f"BEDROCK_ERROR:{status}:{'; '.join(errors) if errors else 'Bedrock unavailable'}"
             )
-        except Exception:
-            return self._generate_intelligent_recommendation(finding, cost)
+
+        return [AIRecommendation(**r) for r in result["recommendations"]]
+
+    # ------------------------------------------------------------------
+    # Simulation / demo mode — local intelligent FinOps reasoning
+    # ------------------------------------------------------------------
 
     def _generate_intelligent_recommendation(
         self,
         finding: WasteFinding,
-        cost: Optional[CostFinding] = None
+        cost: Optional[CostFinding] = None,
     ) -> AIRecommendation:
         savings_text = f"${cost.monthly_savings:.2f}/mo" if cost else "substantial cost"
         annual_text = f"${cost.annualized_savings:.2f}/yr" if cost else ""
@@ -161,7 +178,7 @@ class AIAdvisorModule:
                     f"instance type via `terraform apply` within 3 minutes."
                 ),
                 confidence_score=0.98,
-                model_used=self.MODEL_ID
+                model_used=self.DEFAULT_MODEL_ID
             )
 
         elif finding.waste_category == WasteCategory.UNATTACHED_STORAGE:
@@ -193,7 +210,7 @@ class AIAdvisorModule:
                     "via `aws ec2 create-volume --snapshot-id <snap_id>`."
                 ),
                 confidence_score=0.99,
-                model_used=self.MODEL_ID
+                model_used=self.DEFAULT_MODEL_ID
             )
 
         elif finding.waste_category == WasteCategory.IDLE_SERVERLESS:
@@ -219,7 +236,7 @@ class AIAdvisorModule:
                 ],
                 rollback_plan="Redeploy function from S3 zipped archive using existing CI/CD deployment pipeline.",
                 confidence_score=0.97,
-                model_used=self.MODEL_ID
+                model_used=self.DEFAULT_MODEL_ID
             )
 
         elif finding.waste_category == WasteCategory.IDLE_NETWORKING:
@@ -244,7 +261,7 @@ class AIAdvisorModule:
                 ],
                 rollback_plan="Allocate new Elastic IP if required and update DNS records via automation.",
                 confidence_score=0.99,
-                model_used=self.MODEL_ID
+                model_used=self.DEFAULT_MODEL_ID
             )
 
         return AIRecommendation(
@@ -258,5 +275,5 @@ class AIAdvisorModule:
             steps_to_remediate=["Review resource in console", "Apply Terraform adjustment"],
             rollback_plan="Revert Terraform commit.",
             confidence_score=0.90,
-            model_used=self.MODEL_ID
+            model_used=self.DEFAULT_MODEL_ID
         )

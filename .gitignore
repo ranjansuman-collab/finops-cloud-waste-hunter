@@ -25,3 +25,13 @@ storage/dynamodb/*.json
 .env.local
 .DS_Store
 Thumbs.db
+
+# Terraform Generated Files & State
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfplan
+*.plan
+storage/terraform_workspace/

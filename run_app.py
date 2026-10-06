@@ -1,4 +1,4 @@
-﻿"""
+"""
 FinOps Cloud Waste Hunter & Auto-Remediator - Application Launcher
 Launches FastAPI backend server and automatically opens browser dashboard.
 ISWE309L Cloud Computing - Course Project Review-1
@@ -52,12 +52,13 @@ def print_banner(port: int):
 
 def main():
     port = find_free_port(8080)
-    url = f"http://localhost:{port}/"
+    display_url = f"http://localhost:{port}/"
+    launch_url = f"http://localhost:{port}/?v={int(time.time())}"
 
     print_banner(port)
 
-    # Automatically launch browser in background
-    threading.Thread(target=open_browser, args=(url,), daemon=True).start()
+    # Automatically launch browser in background with cache buster
+    threading.Thread(target=open_browser, args=(launch_url,), daemon=True).start()
 
     # Launch Uvicorn server
     from app.server import app

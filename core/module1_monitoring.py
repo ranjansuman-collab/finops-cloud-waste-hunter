@@ -1,4 +1,4 @@
-﻿"""
+"""
 Module 1: Resource Monitoring
 Collects resource-utilisation information from simulated cloud infrastructure and AWS CloudWatch.
 ISWE309L Cloud Computing - Course Project Review-1
@@ -21,14 +21,13 @@ class ResourceMonitoringModule:
     Implements FR1: Collect and monitor resource-usage metrics from simulated cloud infrastructure.
     """
 
-    def __init__(self, use_live_aws: bool = False):
-        self.use_live_aws = use_live_aws and self._check_aws_credentials()
+    def __init__(self, use_live_aws: bool = False, region_name: Optional[str] = None):
+        self.use_live_aws = use_live_aws
+        self.region_name = region_name
 
     def _check_aws_credentials(self) -> bool:
-        return bool(
-            os.getenv("AWS_ACCESS_KEY_ID") and
-            os.getenv("AWS_SECRET_ACCESS_KEY")
-        )
+        from core.aws.connection import has_aws_credentials
+        return has_aws_credentials()
 
     def fetch_resources(self, scenario_id: str = "enterprise") -> List[CloudResource]:
         """
@@ -65,68 +64,23 @@ class ResourceMonitoringModule:
 
     def _fetch_live_aws_resources(self) -> List[CloudResource]:
         """
-        Connects via Boto3 to live AWS account if credentials are configured.
-        Falls back safely if network or permissions fail.
+        Connects via AWSDiscoveryService to discover live AWS resources across EC2, EBS, EIP, Lambda, and S3.
+        Raises AWSDiscoveryError if credentials are missing or STS fails.
+        Never silently substitutes fake enterprise data in live AWS mode.
         """
-        try:
-            import boto3
-            ec2 = boto3.client("ec2")
-            cloudwatch = boto3.client("cloudwatch")
-            resources: List[CloudResource] = []
+        from core.aws.discovery import AWSDiscoveryService, AWSDiscoveryError
+        from core.aws.connection import has_aws_credentials
 
-            # 1. EC2 instances
-            ec2_resp = ec2.describe_instances()
-            for reservation in ec2_resp.get("Reservations", []):
-                for inst in reservation.get("Instances", []):
-                    inst_id = inst.get("InstanceId")
-                    state = inst.get("State", {}).get("Name", "unknown")
-                    inst_type = inst.get("InstanceType", "t3.micro")
-                    tags = {t["Key"]: t["Value"] for t in inst.get("Tags", [])}
-                    name = tags.get("Name", inst_id)
+        if not has_aws_credentials():
+            raise AWSDiscoveryError("AWS credentials missing. Cannot discover live AWS resources.")
 
-                    resources.append(
-                        CloudResource(
-                            id=inst_id,
-                            name=name,
-                            resource_type=ResourceType.EC2,
-                            region=ec2.meta.region_name or "us-east-1",
-                            state=state,
-                            specs={"instance_type": inst_type, "lifecycle": "on-demand"},
-                            tags=tags,
-                            metrics={"cpu_utilization_avg": 5.0}
-                        )
-                    )
+        discovery = AWSDiscoveryService(region_name=self.region_name)
+        result = discovery.discover_all()
 
-            # 2. EBS Volumes
-            ebs_resp = ec2.describe_volumes()
-            for vol in ebs_resp.get("Volumes", []):
-                vol_id = vol.get("VolumeId")
-                status = vol.get("State", "unknown")
-                tags = {t["Key"]: t["Value"] for t in vol.get("Tags", [])}
-                name = tags.get("Name", vol_id)
-                attachments = vol.get("Attachments", [])
-                is_unattached = len(attachments) == 0
+        if result.get("status") != "CONNECTED":
+            err_msg = result.get("summary") or "AWS authentication/discovery failed"
+            raise AWSDiscoveryError(err_msg)
 
-                resources.append(
-                    CloudResource(
-                        id=vol_id,
-                        name=name,
-                        resource_type=ResourceType.EBS,
-                        region=ec2.meta.region_name or "us-east-1",
-                        state=status,
-                        specs={
-                            "volume_type": vol.get("VolumeType", "gp3"),
-                            "size_gb": vol.get("Size", 20)
-                        },
-                        tags=tags,
-                        metrics={
-                            "attachment_status": "unattached" if is_unattached else "attached",
-                            "days_unattached": 14 if is_unattached else 0
-                        }
-                    )
-                )
+        all_dicts = result.get("all_resources", [])
+        return [CloudResource(**r) for r in all_dicts]
 
-            return resources if resources else get_scenario_resources("enterprise")
-        except Exception as e:
-            logger.warning(f"Live AWS fetch failed ({e}). Falling back to simulation mode.")
-            return get_scenario_resources("enterprise")

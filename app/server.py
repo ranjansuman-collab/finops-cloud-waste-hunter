@@ -1,4 +1,4 @@
-﻿"""
+"""
 FinOps Web Application & REST API Server (FastAPI)
 Provides real-time interactive UI and module-by-module demonstration endpoints.
 ISWE309L Cloud Computing - Course Project Review-1
@@ -32,9 +32,19 @@ STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+@app.middleware("http")
+async def add_no_cache_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
 class PipelineRunRequest(BaseModel):
     scenario: str = "enterprise"
     use_live_aws: bool = False
+    region: Optional[str] = None
 
 
 class PRActionRequest(BaseModel):
@@ -42,11 +52,74 @@ class PRActionRequest(BaseModel):
     reason: Optional[str] = None
 
 
+class AdvisorRequest(BaseModel):
+    """
+    Configuration accepted by POST /api/aws/advisor.
+    The endpoint always obtains live evidence from the real AWS pipeline itself;
+    the frontend cannot inject arbitrary findings.
+    """
+    region: Optional[str] = None
+    model_id: Optional[str] = None
+    window_days: int = 14   # CloudWatch metrics window
+
+
+class TerraformPlanApiRequest(BaseModel):
+    scenario: Optional[str] = "enterprise"
+    use_live_terraform: bool = False
+    use_live_aws: bool = False
+    region: Optional[str] = None
+
+
+class TerraformApplyApiRequest(BaseModel):
+    plan_id: str
+    approved: bool = False
+    confirm_destructive: bool = False
+    reviewer: str = "Lead FinOps Engineer"
+    use_live_aws: bool = False
+
+
+class GitOpsWorkflowRequest(BaseModel):
+    """
+    Configuration accepted by POST /api/gitops/workflow.
+
+    In simulation mode (use_live_gitops=False, default), an in-memory PR is created;
+    no real Git or GitHub operations are performed.
+
+    In live mode (use_live_gitops=True), the endpoint:
+      1. Creates a real local Git branch (finops/<resource>/<action>).
+      2. Stages and commits the Terraform patch files.
+      3. Pushes the branch to the configured remote.
+      4. Opens a GitHub Pull Request via the PyGitHub API.
+
+    Requirements for live mode:
+      - GITHUB_TOKEN env var (GitHub personal access token with repo scope)
+      - GIT_REPOSITORY env var (e.g. "owner/repo")
+
+    SAFETY:
+    - PR creation NEVER executes terraform apply automatically.
+    - Merging is NEVER automated; it requires human sign-off in GitHub.
+    - No AWS credentials are injected into commits or PR body.
+    """
+    scenario: Optional[str] = "enterprise"
+    use_live_aws: bool = False
+    use_live_gitops: bool = False
+    base_branch: str = "main"
+    region: Optional[str] = None
+
+
 @app.get("/", response_class=HTMLResponse)
 def serve_index():
     index_path = STATIC_DIR / "index.html"
     if index_path.exists():
-        return FileResponse(str(index_path))
+        content = index_path.read_text(encoding="utf-8")
+        return HTMLResponse(
+            content=content,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
     return "<h1>FinOps Cloud Waste Hunter & Auto-Remediator</h1><p>Static UI loading...</p>"
 
 
@@ -66,10 +139,192 @@ def get_scenarios():
     }
 
 
+@app.get("/api/aws/status")
+def get_aws_status(region: Optional[str] = None):
+    """
+    Performs real read-only AWS authentication and service access checks.
+    Verifies STS caller identity and read access to EC2, CloudWatch, S3, Cost Explorer, and Bedrock.
+    """
+    from core.aws.connection import AWSConnectionService
+    service = AWSConnectionService(region_name=region)
+    return service.get_full_status()
+
+
+@app.get("/api/aws/resources")
+def get_aws_resources(region: Optional[str] = None):
+    """
+    Performs real read-only AWS resource discovery across EC2, EBS, Elastic IP, Lambda, and S3.
+    Returns grouped resources, counts, service statuses, and errors.
+    """
+    from core.aws.discovery import AWSDiscoveryService
+    discovery = AWSDiscoveryService(region_name=region)
+    return discovery.discover_all()
+
+
+@app.get("/api/aws/metrics")
+def get_aws_metrics(region: Optional[str] = None, window_days: int = 14):
+    """
+    Retrieves real CloudWatch telemetry for discovered resources over the specified window.
+    """
+    from core.aws.metrics import AWSMetricsService
+    metrics_svc = AWSMetricsService(region_name=region)
+    return metrics_svc.get_all_metrics(window_days=window_days)
+
+
+@app.get("/api/aws/costs")
+def get_aws_costs(region: Optional[str] = None, days: int = 30):
+    """
+    Retrieves actual AWS Cost Explorer spend and service breakdown.
+    """
+    from core.aws.costs import AWSCostService
+    cost_svc = AWSCostService(region_name=region)
+    return cost_svc.get_full_cost_report(days=days)
+
+
+@app.post("/api/aws/advisor")
+def run_bedrock_advisor(req: AdvisorRequest):
+    """
+    Runs the full real AWS evidence pipeline and returns Amazon Bedrock AI
+    recommendations for detected waste.
+
+    LIVE mode pipeline:
+      1. STS authentication check
+      2. Real resource discovery (EC2, EBS, EIP, Lambda, S3)
+      3. Real CloudWatch metrics (window_days)
+      4. Real Cost Explorer spend
+      5. Waste detection on real evidence
+      6. Amazon Bedrock recommendations via AWSBedrockAdvisorService
+
+    The frontend may only supply: region, model_id, window_days.
+    It cannot inject arbitrary findings — all evidence is obtained from AWS.
+
+    SAFETY:
+    - Bedrock is analysis/recommendation ONLY.
+    - Bedrock never modifies AWS, never executes Terraform.
+    - No AWS credentials are sent to Bedrock.
+    """
+    from core.aws.connection import AWSConnectionService, get_configured_region, STATUS_CONNECTED
+    from core.aws.bedrock import AWSBedrockAdvisorService, STATUS_MODEL_NOT_AVAILABLE
+    from core.aws.discovery import AWSDiscoveryService
+    from core.aws.metrics import AWSMetricsService
+    from core.aws.costs import AWSCostService
+    from core.module1_monitoring import ResourceMonitoringModule
+    from core.module2_waste_detection import WasteDetectionModule
+    from core.module3_cost_estimation import CostEstimationModule
+    from datetime import datetime, timezone
+
+    region = get_configured_region(req.region)
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    # Step 1: Verify AWS authentication
+    conn_svc = AWSConnectionService(region_name=region)
+    identity = conn_svc.get_caller_identity()
+    if not identity["authenticated"]:
+        return {
+            "status": identity["status"],
+            "account_id": None,
+            "arn": None,
+            "region": region,
+            "model_used": req.model_id or "not_invoked",
+            "real_mode": True,
+            "timestamp": timestamp,
+            "recommendations": [],
+            "assumptions": [],
+            "errors": [identity["message"]],
+            "summary": f"Advisor aborted: {identity['message']}",
+        }
+
+    account_id = identity["account_id"]
+    arn = identity["arn"]
+
+    # Step 2: Real resource discovery
+    monitoring = ResourceMonitoringModule(use_live_aws=True)
+    monitoring.region_name = region
+    try:
+        resources = monitoring.fetch_resources()
+    except Exception as exc:
+        return {
+            "status": "ERROR",
+            "account_id": account_id,
+            "arn": arn,
+            "region": region,
+            "model_used": req.model_id or "not_invoked",
+            "real_mode": True,
+            "timestamp": timestamp,
+            "recommendations": [],
+            "assumptions": [],
+            "errors": [f"Resource discovery failed: {exc}"],
+            "summary": "Advisor aborted at resource discovery stage.",
+        }
+
+    # Step 3: Real CloudWatch metrics
+    metrics_svc = AWSMetricsService(region_name=region)
+    metrics_svc.collect_metrics_for_resources(resources=resources)
+
+    # Step 4: Real Cost Explorer spend
+    cost_svc = AWSCostService(region_name=region)
+    ce_data = cost_svc.get_actual_costs()
+
+    # Step 5: Waste detection on real evidence
+    waste_module = WasteDetectionModule()
+    cost_module = CostEstimationModule()
+    waste_findings = waste_module.detect_waste(resources)
+    cost_findings = cost_module.estimate_savings(
+        findings=waste_findings,
+        resources=resources,
+        cost_explorer_data=ce_data,
+        is_real_aws=True,
+    )
+
+    if not waste_findings:
+        return {
+            "status": STATUS_CONNECTED,
+            "account_id": account_id,
+            "arn": arn,
+            "region": region,
+            "model_used": req.model_id or "not_invoked",
+            "real_mode": True,
+            "timestamp": timestamp,
+            "recommendations": [],
+            "assumptions": [],
+            "errors": [],
+            "summary": f"No waste findings detected in {region}. No Bedrock invocation needed.",
+        }
+
+    # Step 6: Amazon Bedrock recommendations
+    bedrock_svc = AWSBedrockAdvisorService(region_name=region, model_id=req.model_id)
+    result = bedrock_svc.generate_all_recommendations(
+        findings=waste_findings,
+        costs=cost_findings,
+        region_name=region,
+        model_id=req.model_id,
+    )
+
+    return {
+        "status": result.get("status"),
+        "account_id": account_id,
+        "arn": arn,
+        "region": region,
+        "model_used": result.get("model_used"),
+        "real_mode": True,
+        "timestamp": result.get("timestamp", timestamp),
+        "recommendations": result.get("recommendations", []),
+        "assumptions": result.get("assumptions", []),
+        "errors": result.get("errors", []),
+        "summary": result.get("summary", ""),
+        "waste_findings_count": len(waste_findings),
+        "resources_discovered": len(resources),
+    }
+
+
 @app.post("/api/pipeline/run")
 def run_pipeline(req: PipelineRunRequest):
     try:
-        report = engine.execute_full_pipeline(scenario_id=req.scenario)
+        report = engine.execute_full_pipeline(
+            scenario_id=req.scenario,
+            use_live_aws=req.use_live_aws,
+            region_name=req.region
+        )
         return {
             "status": "SUCCESS",
             "run_id": report.run_id,
@@ -126,6 +381,104 @@ def reject_pull_request(pr_id: str, req: PRActionRequest):
     return {"status": "SUCCESS", "pr": pr.model_dump()}
 
 
+@app.post("/api/gitops/workflow")
+def run_gitops_workflow(req: GitOpsWorkflowRequest):
+    """
+    Executes the full GitOps PR workflow for FinOps-detected waste.
+
+    Simulation mode (use_live_gitops=False, default):
+      - In-memory PR is generated with full FinOps audit trail in the PR body.
+      - No real Git or GitHub operations are executed.
+      - Safe to run without any Git or GitHub credentials.
+
+    Live mode (use_live_gitops=True):
+      - Creates a real local branch: finops/<resource>/<action>.
+      - Commits the generated Terraform patch files.
+      - Pushes to the configured 'origin' remote.
+      - Opens a GitHub Pull Request using GITHUB_TOKEN + GIT_REPOSITORY env vars.
+      - Returns GIT_CREDENTIALS_MISSING or GIT_REPOSITORY_CONFIG_MISSING if
+        the environment is not configured; never fakes success.
+
+    SAFETY:
+    - PR creation NEVER triggers terraform apply.
+    - Merging is NEVER automated; human sign-off in GitHub is required.
+    - No AWS credentials or secrets are included in commits or PR body.
+    """
+    from core.gitops.orchestrator import GitOpsOrchestrator
+    from core.module7_gitops import GitOpsReviewModule
+
+    # Build evidence from pipeline
+    if req.use_live_aws:
+        from core.module1_monitoring import ResourceMonitoringModule
+        from core.module2_waste_detection import WasteDetectionModule
+        from core.module3_cost_estimation import CostEstimationModule
+        from core.aws.metrics import AWSMetricsService
+        from core.aws.costs import AWSCostService
+
+        monitoring = ResourceMonitoringModule(use_live_aws=True)
+        if req.region:
+            monitoring.region_name = req.region
+        resources = monitoring.fetch_resources()
+
+        metrics_svc = AWSMetricsService(region_name=req.region)
+        metrics_svc.collect_metrics_for_resources(resources=resources)
+
+        cost_svc = AWSCostService(region_name=req.region)
+        ce_data = cost_svc.get_actual_costs()
+
+        waste_module = WasteDetectionModule()
+        cost_module = CostEstimationModule()
+        findings = waste_module.detect_waste(resources)
+        costs = cost_module.estimate_savings(
+            findings=findings,
+            resources=resources,
+            cost_explorer_data=ce_data,
+            is_real_aws=True,
+        )
+        recommendations = []
+        patches = []
+        total_savings = sum(c.monthly_savings for c in costs)
+    else:
+        # Simulation: use or generate last pipeline report
+        if not engine.last_report or (req.scenario and engine.last_report.scenario != req.scenario):
+            engine.execute_full_pipeline(req.scenario or "enterprise")
+        report = engine.last_report
+        findings = report.waste_findings if report else []
+        costs = report.cost_findings if report else []
+        recommendations = report.ai_recommendations if report else []
+        patches = report.terraform_patches if report else []
+        total_savings = report.total_monthly_savings if report else 0.0
+
+    if not findings:
+        return {
+            "status": "NO_FINDINGS",
+            "mode": "LIVE" if req.use_live_gitops else "SIMULATION",
+            "message": "No waste findings detected; no GitOps PR required.",
+            "pr_number": None,
+            "pr_url": None,
+            "branch": None,
+            "requires_human_approval": True,
+            "automatic_apply_triggered": False,
+        }
+
+    # Determine if any action is destructive (EBS delete, EIP release, EC2 terminate)
+    destructive_categories = {"UNATTACHED_STORAGE", "IDLE_NETWORKING"}
+    is_destructive = any(f.waste_category.value in destructive_categories for f in findings)
+
+    orchestrator = GitOpsOrchestrator(use_live_gitops=req.use_live_gitops)
+    result = orchestrator.create_remediation_pr(
+        run_id=engine.last_report.run_id if engine.last_report else "manual",
+        findings=findings,
+        costs=costs,
+        recommendations=recommendations,
+        patches=patches or None,
+        total_monthly_savings=total_savings,
+        is_destructive=is_destructive,
+        base_branch=req.base_branch,
+    )
+    return result.model_dump()
+
+
 @app.get("/api/terraform/diff")
 def get_terraform_diff():
     if not engine.last_report:
@@ -137,6 +490,90 @@ def get_terraform_diff():
         "combined_diff": combined_diff,
         "patches": [p.model_dump() for p in patches]
     }
+
+
+@app.post("/api/terraform/plan")
+def create_terraform_plan(req: TerraformPlanApiRequest):
+    """
+    Executes the pre-apply Terraform pipeline:
+    HCL Generation -> terraform fmt -> terraform validate -> terraform plan.
+    Returns structured plan output for explicit human review.
+    NEVER automatically applies changes.
+    """
+    from core.terraform.service import RealTerraformService
+
+    if req.use_live_aws:
+        # In live mode, obtain real findings from AWS first
+        from core.module1_monitoring import ResourceMonitoringModule
+        from core.module2_waste_detection import WasteDetectionModule
+        from core.module3_cost_estimation import CostEstimationModule
+        from core.aws.metrics import AWSMetricsService
+        from core.aws.costs import AWSCostService
+
+        monitoring = ResourceMonitoringModule(use_live_aws=True)
+        if req.region:
+            monitoring.region_name = req.region
+        resources = monitoring.fetch_resources()
+
+        metrics_svc = AWSMetricsService(region_name=req.region)
+        metrics_svc.collect_metrics_for_resources(resources=resources)
+
+        cost_svc = AWSCostService(region_name=req.region)
+        ce_data = cost_svc.get_actual_costs()
+
+        waste_module = WasteDetectionModule()
+        cost_module = CostEstimationModule()
+        findings = waste_module.detect_waste(resources)
+        costs = cost_module.estimate_savings(
+            findings=findings,
+            resources=resources,
+            cost_explorer_data=ce_data,
+            is_real_aws=True
+        )
+        recommendations = []
+    else:
+        # Simulation mode: ensure last_report is present
+        if not engine.last_report or (req.scenario and engine.last_report.scenario != req.scenario):
+            engine.execute_full_pipeline(req.scenario or "enterprise")
+        findings = engine.last_report.waste_findings if engine.last_report else []
+        recommendations = engine.last_report.ai_recommendations if engine.last_report else []
+        costs = engine.last_report.cost_findings if engine.last_report else []
+
+    # Configure service
+    engine.terraform_service.use_live_terraform = req.use_live_terraform
+    if req.region:
+        engine.terraform_service.region = req.region
+
+    plan_result = engine.terraform_service.create_plan(
+        findings=findings,
+        recommendations=recommendations,
+        cost_findings=costs,
+    )
+    return plan_result.model_dump()
+
+
+@app.post("/api/terraform/apply")
+def apply_terraform_plan(req: TerraformApplyApiRequest):
+    """
+    Applies an already-reviewed and validated Terraform plan.
+    Requires explicit user approval (approved=True) and checks for staleness,
+    configuration integrity, and confirmation for destructive actions.
+    NEVER allows Bedrock or background automation to bypass human sign-off.
+    """
+    from core.terraform.models import TerraformApprovalRequest
+
+    approval = TerraformApprovalRequest(
+        plan_id=req.plan_id,
+        approved=req.approved,
+        confirm_destructive=req.confirm_destructive,
+        reviewer=req.reviewer,
+    )
+
+    apply_result = engine.terraform_service.apply_plan(
+        approval=approval,
+        use_live_aws=req.use_live_aws,
+    )
+    return apply_result.model_dump()
 
 
 @app.get("/api/reports/download/{fmt}")

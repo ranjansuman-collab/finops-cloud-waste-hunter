@@ -1,4 +1,4 @@
-﻿"""
+"""
 Module 3: Cost & Savings Estimation
 Calculates current spend, optimized spend, monthly/annual savings, and carbon reduction metrics.
 ISWE309L Cloud Computing - Course Project Review-1
@@ -56,10 +56,16 @@ class CostEstimationModule:
     def estimate_savings(
         self,
         findings: List[WasteFinding],
-        resources: List[CloudResource]
+        resources: List[CloudResource],
+        cost_explorer_data: Optional[Dict[str, Any]] = None,
+        is_real_aws: bool = False
     ) -> List[CostFinding]:
         res_map = {r.id: r for r in resources}
         cost_findings: List[CostFinding] = []
+
+        service_costs = {}
+        if is_real_aws and cost_explorer_data and cost_explorer_data.get("has_actual_costs"):
+            service_costs = cost_explorer_data.get("service_costs", {})
 
         for finding in findings:
             res = res_map.get(finding.resource_id)
@@ -67,6 +73,21 @@ class CostEstimationModule:
                 continue
 
             current_cost, opt_cost, breakdown, co2e = self._compute_cost_delta(finding, res)
+
+            # In real AWS mode, clearly label calculated estimates and record assumptions
+            if is_real_aws:
+                service_key_map = {
+                    ResourceType.EC2: "Amazon Elastic Compute Cloud - Compute",
+                    ResourceType.EBS: "Amazon Elastic Block Store",
+                    ResourceType.LAMBDA: "AWS Lambda",
+                    ResourceType.EIP: "Amazon Elastic Compute Cloud - Compute",
+                    ResourceType.S3: "Amazon Simple Storage Service"
+                }
+                ce_name = service_key_map.get(res.resource_type, "")
+                actual_spend = service_costs.get(ce_name)
+                spend_note = f" (Actual AWS {res.resource_type.value} Service Spend: ${actual_spend:.2f}/mo)" if actual_spend is not None else ""
+                breakdown = f"[ESTIMATED SAVINGS MODEL]{spend_note} {breakdown} [Assumption: regional AWS on-demand rates; exact resource attribution requires Cost Allocation Tags]"
+
             monthly_savings = max(0.0, current_cost - opt_cost)
             annualized = monthly_savings * 12
 
@@ -95,9 +116,18 @@ class CostEstimationModule:
         """Returns (current_monthly, optimized_monthly, breakdown_text, carbon_kg_co2e)."""
         r_type = res.resource_type
 
-        # 1. EC2 Compute Rightsizing
+        # 1. EC2 Compute Rightsizing & Stopped Instances
         if r_type == ResourceType.EC2:
             current_type = res.specs.get("instance_type", "t3.medium")
+
+            # Handle stopped EC2 instances
+            if res.state == "stopped" or "stopped" in finding.id:
+                # Stopped compute costs $0/hr, but root disk storage is charged (typical 30GB gp3 root volume)
+                root_vol_gb = 30
+                vol_cost = root_vol_gb * self.EBS_GB_MONTHLY_PRICING.get("gp3", 0.08)
+                breakdown = f"Stopped {current_type} incurring ~{root_vol_gb} GB root volume storage (${vol_cost:.2f}/mo)"
+                return vol_cost, 0.0, breakdown, 0.5
+
             rec_type = finding.metrics_summary.get("recommended_instance_type", "t3.medium")
 
             curr_rate = self.EC2_HOURLY_PRICING.get(current_type, 0.10)
@@ -106,9 +136,8 @@ class CostEstimationModule:
             curr_monthly = curr_rate * self.HOURS_PER_MONTH
             opt_monthly = opt_rate * self.HOURS_PER_MONTH
             breakdown = f"{current_type} (${curr_rate:.4f}/hr) downsized to {rec_type} (${opt_rate:.4f}/hr)"
-            # EC2 vCPU reduction proxy for carbon savings
             vcpus_freed = max(2, res.specs.get("vcpus", 8) - 2)
-            carbon = vcpus_freed * 0.025 * self.HOURS_PER_MONTH * 0.4  # kg CO2e
+            carbon = vcpus_freed * 0.025 * self.HOURS_PER_MONTH * 0.4
             return curr_monthly, opt_monthly, breakdown, carbon
 
         # 2. EBS Unattached Volume

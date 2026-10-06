@@ -1,4 +1,4 @@
-﻿"""
+"""
 Module 6: Terraform Remediation Engine
 Translates optimization recommendations into precise Terraform HCL configuration patches and unified diffs.
 ISWE309L Cloud Computing - Course Project Review-1
@@ -18,19 +18,56 @@ from core.models import (
     ResourceType
 )
 
+from core.terraform.service import RealTerraformService
+from core.terraform.models import (
+    TerraformPlanResult,
+    TerraformApplyResult,
+    TerraformApprovalRequest,
+)
+
 logger = logging.getLogger("finops.module6")
 
 
 class TerraformRemediationModule:
     """
     Implements FR9:
-    Generates HCL modifications and unified diffs representing recommended infrastructure changes.
+    Generates HCL modifications and unified diffs representing recommended infrastructure changes,
+    and interfaces with RealTerraformService for fmt, validate, plan, approval, and apply.
     """
 
-    def __init__(self, tf_dir: str = None):
+    def __init__(self, tf_dir: str = None, use_live_terraform: bool = False, region_name: str = None):
         if not tf_dir:
             tf_dir = Path(__file__).parent.parent / "sample_infrastructure"
         self.tf_dir = Path(tf_dir)
+        self.real_service = RealTerraformService(
+            source_dir=self.tf_dir,
+            use_live_terraform=use_live_terraform,
+            region_name=region_name,
+        )
+
+    def create_plan(
+        self,
+        findings: List[WasteFinding],
+        recommendations: Optional[List[AIRecommendation]] = None,
+        cost_findings: Optional[List[CostFinding]] = None,
+    ) -> TerraformPlanResult:
+        """Executes real/simulated Terraform plan generation."""
+        return self.real_service.create_plan(
+            findings=findings,
+            recommendations=recommendations,
+            cost_findings=cost_findings,
+        )
+
+    def apply_plan(
+        self,
+        approval: TerraformApprovalRequest,
+        use_live_aws: bool = False,
+    ) -> TerraformApplyResult:
+        """Applies a previously verified and approved Terraform plan."""
+        return self.real_service.apply_plan(
+            approval=approval,
+            use_live_aws=use_live_aws,
+        )
 
     def generate_patches(
         self,

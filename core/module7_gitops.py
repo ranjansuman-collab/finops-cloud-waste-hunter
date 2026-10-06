@@ -1,4 +1,4 @@
-﻿"""
+"""
 Module 7: GitOps Review & Pull Request Engine
 Creates human-reviewable GitOps pull requests, CI/CD automated checks, and controlled approval workflows.
 ISWE309L Cloud Computing - Course Project Review-1
@@ -18,6 +18,9 @@ from core.models import (
     AIRecommendation
 )
 
+from core.gitops.orchestrator import GitOpsOrchestrator
+from core.gitops.models import GitOpsWorkflowResult
+
 logger = logging.getLogger("finops.module7")
 
 
@@ -26,11 +29,39 @@ class GitOpsReviewModule:
     Implements FR10 & FR11:
     Orchestrates the GitOps approval workflow, branch isolation, PR generation,
     CI validation status checks, and merge-to-deploy transitions.
+    Interfaces with GitOpsOrchestrator for real local Git and remote GitHub operations.
     """
 
-    def __init__(self):
+    def __init__(self, use_live_gitops: bool = False):
+        self.use_live_gitops = use_live_gitops
+        self.orchestrator = GitOpsOrchestrator(use_live_gitops=use_live_gitops)
         self.active_prs: Dict[str, GitOpsPR] = {}
         self._pr_counter = 42
+
+    def execute_workflow(
+        self,
+        run_id: str,
+        findings: List[WasteFinding],
+        costs: Optional[List[CostFinding]] = None,
+        recommendations: Optional[List[AIRecommendation]] = None,
+        patches: Optional[List[TerraformPatch]] = None,
+        total_monthly_savings: float = 0.0,
+        files_to_commit: Optional[List[str]] = None,
+        is_destructive: bool = False,
+        base_branch: str = "main",
+    ) -> GitOpsWorkflowResult:
+        """Executes the GitOps workflow (simulation or live)."""
+        return self.orchestrator.create_remediation_pr(
+            run_id=run_id,
+            findings=findings,
+            costs=costs,
+            recommendations=recommendations,
+            patches=patches,
+            total_monthly_savings=total_monthly_savings,
+            files_to_commit=files_to_commit,
+            is_destructive=is_destructive,
+            base_branch=base_branch,
+        )
 
     def create_pull_request(
         self,

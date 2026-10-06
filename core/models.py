@@ -1,4 +1,4 @@
-﻿"""
+"""
 FinOps Cloud Waste Hunter & Auto-Remediator
 Data Models for Cloud Resources, Telemetry, Waste Detection, Cost, AI, IaC, and GitOps.
 ISWE309L Cloud Computing - Course Project Review-1
@@ -18,6 +18,7 @@ class ResourceType(str, Enum):
     RDS = "RDS"
     EIP = "EIP"
     NAT_GATEWAY = "NAT_GATEWAY"
+    S3 = "S3"
 
 
 class WasteCategory(str, Enum):

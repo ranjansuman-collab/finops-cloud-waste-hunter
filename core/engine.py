@@ -1,4 +1,4 @@
-﻿"""
+"""
 FinOps Orchestration Engine
 Coordinates the entire 7-module lifecycle:
 Module 1: Resource Monitoring
@@ -31,27 +31,63 @@ logger = logging.getLogger("finops.engine")
 
 
 class FinOpsEngine:
-    def __init__(self, use_live_aws: bool = False):
+    def __init__(self, use_live_aws: bool = False, use_live_terraform: bool = False):
         self.module1 = ResourceMonitoringModule(use_live_aws=use_live_aws)
         self.module2 = WasteDetectionModule()
         self.module3 = CostEstimationModule()
-        self.module4 = AIAdvisorModule()
+        self.module4 = AIAdvisorModule(use_live_aws=use_live_aws)
         self.module5 = ReportStorageModule()
-        self.module6 = TerraformRemediationModule()
+        self.module6 = TerraformRemediationModule(use_live_terraform=use_live_terraform)
         self.module7 = GitOpsReviewModule()
         self.last_report: Optional[PipelineReport] = None
 
-    def execute_full_pipeline(self, scenario_id: str = "enterprise") -> PipelineReport:
+    @property
+    def terraform_service(self):
+        return self.module6.real_service
+
+    def execute_full_pipeline(
+        self,
+        scenario_id: str = "enterprise",
+        use_live_aws: Optional[bool] = None,
+        region_name: Optional[str] = None
+    ) -> PipelineReport:
+        if use_live_aws is not None:
+            self.module1.use_live_aws = use_live_aws
+            self.module4.use_live_aws = use_live_aws
+        if region_name:
+            self.module1.region_name = region_name
+            self.module4.region_name = region_name
+            self.module6.real_service.region = region_name
+
         run_id = f"run-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4]}"
+
+        is_live = self.module1.use_live_aws
 
         # Step 1: Resource Monitoring
         resources = self.module1.fetch_resources(scenario_id)
 
-        # Step 2: Waste Detection
+        # In live AWS mode: retrieve real CloudWatch metrics & Cost Explorer spend
+        ce_data = None
+        if is_live:
+            from core.aws.metrics import AWSMetricsService
+            from core.aws.costs import AWSCostService
+
+            metrics_service = AWSMetricsService(region_name=self.module1.region_name)
+            metrics_service.collect_metrics_for_resources(resources=resources)
+
+            cost_service = AWSCostService(region_name=self.module1.region_name)
+            ce_data = cost_service.get_actual_costs()
+
+        # Step 2: Waste Detection (uses real CloudWatch metrics in live mode)
         waste_findings = self.module2.detect_waste(resources)
 
-        # Step 3: Cost & Savings Estimation
-        cost_findings = self.module3.estimate_savings(waste_findings, resources)
+        # Step 3: Cost & Savings Estimation (clearly marks estimates in live mode)
+        cost_findings = self.module3.estimate_savings(
+            findings=waste_findings,
+            resources=resources,
+            cost_explorer_data=ce_data,
+            is_real_aws=is_live
+        )
 
         total_current = sum(c.current_monthly_cost for c in cost_findings)
         total_optimized = sum(c.optimized_monthly_cost for c in cost_findings)
@@ -59,7 +95,11 @@ class FinOpsEngine:
         total_annualized_savings = sum(c.annualized_savings for c in cost_findings)
         total_carbon = sum(c.carbon_savings_kg_co2e for c in cost_findings)
 
-        # Step 4: AI Recommendations (Amazon Bedrock Nova Lite)
+        # Step 4: AI Recommendations
+        # In LIVE mode this delegates to AWSBedrockAdvisorService.
+        # If Bedrock is unavailable, generate_recommendations raises RuntimeError
+        # with a "BEDROCK_ERROR:<status>:<msg>" prefix — let it propagate to the
+        # caller (/api/aws/advisor handles it explicitly; /api/pipeline/run returns 500).
         ai_recommendations = self.module4.generate_recommendations(waste_findings, cost_findings)
 
         # Step 6: Terraform Remediation Patches
