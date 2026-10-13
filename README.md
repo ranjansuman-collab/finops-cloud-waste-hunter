@@ -1,13 +1,13 @@
-# FinOps Cloud Waste Hunter & Auto-Remediator
+# Cloud Waste Hunter & Auto-Remediator
 
 [![Python 3.14](https://img.shields.io/badge/Python-3.14-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688.svg)](https://fastapi.tiangolo.com/)
-[![AWS Bedrock](https://img.shields.io/badge/AWS%20Bedrock-Nova%20Lite-FF9900.svg)](https://aws.amazon.com/bedrock/)
+[![Google Gemini](https://img.shields.io/badge/Google%20Gemini-gemini--3.5--flash--lite-4285F4.svg)](https://ai.google.dev/)
 [![Terraform](https://img.shields.io/badge/Terraform-HCL-844FBA.svg)](https://www.terraform.io/)
 [![GitOps](https://img.shields.io/badge/GitOps-Pull%20Request%20CI-24292e.svg)](https://github.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-An automated Cloud Cost Optimization and DevOps platform that continuously monitors cloud infrastructure, discovers resource waste (unattached storage, idle serverless, and oversized compute), leverages **Amazon Bedrock Nova Lite** for actionable optimization insights, generates **Terraform IaC patches**, and enforces human review via **GitOps pull-request workflows**.
+An automated Cloud Cost Optimization and DevOps platform that continuously monitors cloud infrastructure, discovers resource waste (unattached storage, idle serverless, and oversized compute), leverages **Google Gemini (gemini-3.5-flash-lite)** for actionable optimization insights, generates **Terraform IaC patches**, and enforces human review via **GitOps pull-request workflows**.
 
 ---
 
@@ -24,9 +24,9 @@ An automated Cloud Cost Optimization and DevOps platform that continuously monit
 
 ## 🌟 Key Features & Problem Solved
 
-Traditional cloud monitoring dashboards surface metrics but isolate detection from remediation, creating manual friction and persistent budget waste. **FinOps Cloud Waste Hunter** closes this loop:
+Traditional cloud monitoring dashboards surface metrics but isolate detection from remediation, creating manual friction and persistent budget waste. **Cloud Waste Hunter** closes this loop:
 
-$$\text{Resource Monitoring} \longrightarrow \text{Waste Detection} \longrightarrow \text{Cost Modeling} \longrightarrow \text{Bedrock AI Analysis} \longrightarrow \text{S3/DynamoDB Audit} \longrightarrow \text{Terraform Patching} \longrightarrow \text{GitOps Review}$$
+$$\text{Resource Monitoring} \longrightarrow \text{Waste Detection} \longrightarrow \text{Cost Modeling} \longrightarrow \text{Gemini AI Analysis} \longrightarrow \text{S3/DynamoDB Audit} \longrightarrow \text{Terraform Patching} \longrightarrow \text{GitOps Review}$$
 
 1. **Module 1: Resource Monitoring**: Polls 30-day CloudWatch metrics (CPU, RAM, disk IOPS, network, attachments, invocation counts).
 2. **Module 2: Multi-Vector Waste Detection**:
@@ -35,10 +35,10 @@ $$\text{Resource Monitoring} \longrightarrow \text{Waste Detection} \longrightar
    - **Oversized Compute**: Underutilized EC2 instances (<10% avg CPU) mapped to right-sized families.
    - **Idle Networking**: Unassociated Elastic IPs incurring non-attachment fees and dormant NAT Gateways.
 3. **Module 3: FinOps Cost & Carbon Modeling**: Real-time AWS SKU pricing engine calculating monthly spend, optimized spend, annualized ROI, and CO2e carbon reduction.
-4. **Module 4: Amazon Bedrock Nova Lite AI Advisor**: Synthesizes human-readable rationales, risk levels (Low/Medium/High), step-by-step remediation procedures, and zero-downtime rollback strategies.
+4. **Module 4: Google Gemini AI Advisor (`gemini-3.5-flash-lite`)**: Synthesizes human-readable rationales, risk levels (Low/Medium/High), step-by-step remediation procedures, and zero-downtime rollback strategies.
 5. **Module 5: Report Storage & Audit Ledger**: Publishes full audit reports to **Amazon S3** (`s3://finops-waste-hunter-reports/`) and records indexed audit histories in **Amazon DynamoDB** (`FinOpsAuditTrail`).
 6. **Module 6: Terraform Remediation**: Ingests infrastructure configurations and generates validated HCL patches (`main.tf`) with side-by-side unified diffs.
-7. **Module 7: GitOps Review & Approval**: Branches into `gitops/remediation-run-*`, creates automated Pull Requests with CI/CD checks (`terraform validate`, `Cost Policy`, `Bedrock Guardrail`), and triggers controlled deployment upon reviewer sign-off.
+7. **Module 7: GitOps Review & Approval**: Branches into `gitops/remediation-run-*`, creates automated Pull Requests with CI/CD checks (`terraform validate`, `Cost Policy`, `AI Guardrail`), and triggers controlled deployment upon reviewer sign-off.
 
 ---
 
@@ -514,6 +514,69 @@ POST /api/gitops/workflow
 | `FILE_SECURITY_VIOLATION` | Attempted to stage a forbidden file (`.tfstate`, `.pem`, etc.) |
 | `BRANCH_CONFLICT` | Push rejected due to conflicting remote history |
 | `REMOTE_NOT_FOUND` | Git remote 'origin' is not configured |
+
+---
+
+## 🛡️ End-to-End Integration & Hardening (Checkpoint 8)
+
+Checkpoint 8 unifies all 7 lifecycle modules into a hardened, production-grade FinOps pipeline with strict safety invariants, credential isolation, and deterministic error propagation.
+
+### Complete Integrated Pipeline
+
+```
+Windows EXE / FastAPI UI
+        ↓
+AWS STS Authentication (read-only verification)
+        ↓
+Resource Discovery (EC2, EBS, EIP, Lambda, S3)
+        ↓
+CloudWatch Telemetry & Cost Explorer Spend
+        ↓
+Heuristic Waste Detection Engine
+        ↓
+Amazon Bedrock Nova Lite (Recommendation ONLY)
+        ↓
+Terraform Change Generator (Untrusted Input Screening)
+        ↓
+terraform fmt & terraform validate
+        ↓
+terraform plan (HCL Diff Review & SHA-256 Hashing)
+        ↓
+🛑 EXPLICIT HUMAN APPROVAL GATE 1
+        ↓
+GitOps Branch Isolation (finops/<resource>/<action>)
+        ↓
+File Staging (credential & state file screening)
+        ↓
+Git Commit & Push to Remote
+        ↓
+GitHub Pull Request (PyGitHub REST API)
+        ↓
+CI Validation Checks
+        ↓
+🛑 EXPLICIT HUMAN APPROVAL GATE 2 (+ Destructive Confirmation)
+        ↓
+terraform apply (Config-integrity & anti-staleness checked)
+        ↓
+Read-Only Post-Apply AWS Verification
+        ↓
+Audit Ledger & Reporting (S3 & DynamoDB)
+```
+
+### Safety & Hardening Guarantees
+
+1. **Bedrock is Recommendation-Only**: The AI model never mutates AWS resources and cannot invoke Terraform or Git. All AI outputs are treated as untrusted input and screened against `FORBIDDEN_PATTERNS` (provisioners, shell executions, command expansions, directory traversals).
+2. **Double Human Approval Gates**:
+   - Gate 1: Plan approval before GitOps PR creation.
+   - Gate 2: Explicit user approval (`approved=True`) before `terraform apply`.
+3. **Destructive Action Protection**: Operations involving resource deletion, instance termination, or IP release require explicit secondary confirmation (`confirm_destructive=True`).
+4. **Anti-Staleness & Anti-Tampering**: Terraform plans expire after 30 minutes (`PLAN_STALE`). The SHA-256 hash of configuration files is verified prior to execution; any discrepancy aborts apply (`CONFIG_TAMPERED`).
+5. **Re-Run & Idempotency Safety**: Re-applying an already executed plan is rejected (`PLAN_ALREADY_APPLIED`).
+6. **No Fake Success in Live Mode**: Missing credentials or uninstalled tools return structured failure states (`CREDENTIALS_MISSING`, `TERRAFORM_NOT_INSTALLED`, `GIT_NOT_INSTALLED`), never silent simulated fallbacks.
+7. **Zero Credential Leakage**:
+   - `shell=False` enforced across all subprocess executions.
+   - Tokens, passwords, and AWS access keys are stripped and sanitized from all outputs.
+   - File staging rejects `.env`, `.tfstate`, `credentials`, `*.pem`, and `.terraform/` directories.
 
 ---
 

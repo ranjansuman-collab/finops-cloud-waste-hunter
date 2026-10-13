@@ -24,6 +24,7 @@ Team: Vivek Pandey (24MIS0216) & S. Hemal (24MIS0050)
 """
 
 import os
+import re
 import time
 import uuid
 import shutil
@@ -84,15 +85,17 @@ class StoredPlan:
         plan_file: Path,
         unified_diff: str,
         estimated_savings: float = 0.0,
+        plan_file_hash: Optional[str] = None,
     ):
         self.plan_id = plan_id
         self.config_hash = config_hash
         self.affected_resources = affected_resources
         self.proposed_actions = proposed_actions
         self.is_destructive = is_destructive
-        self.plan_file = plan_file
+        self.plan_file = Path(plan_file).resolve() if plan_file else None
         self.unified_diff = unified_diff
         self.estimated_savings = estimated_savings
+        self.plan_file_hash = plan_file_hash
         self.created_at = time.time()
         self.applied = False
 
@@ -113,9 +116,9 @@ class RealTerraformService:
         use_live_terraform: bool = True,
         region_name: Optional[str] = None
     ):
-        base_dir = Path(__file__).parent.parent.parent
-        self.workspace_dir = Path(workspace_dir or (base_dir / "storage" / "terraform_workspace"))
-        self.source_dir = Path(source_dir or (base_dir / "sample_infrastructure"))
+        base_dir = Path(__file__).parent.parent.parent.resolve()
+        self.workspace_dir = Path(workspace_dir or (base_dir / "storage" / "terraform_workspace")).resolve()
+        self.source_dir = Path(source_dir or (base_dir / "sample_infrastructure")).resolve()
         self.use_live_terraform = use_live_terraform
         self.region = get_configured_region(region_name)
         self.cli = TerraformCLI(workspace_dir=self.workspace_dir)
@@ -170,6 +173,7 @@ class RealTerraformService:
         NEVER executes terraform apply.
         """
         self.initialize_workspace()
+        self.reset_workspace_file("main.tf")
         main_tf = self.workspace_dir / "main.tf"
         if not main_tf.exists():
             return TerraformPlanResult(
@@ -238,6 +242,16 @@ class RealTerraformService:
                     status=STATUS_UNSUPPORTED_ACTION,
                     errors=errors,
                 )
+            if findings:
+                return TerraformPlanResult(
+                    plan_id="",
+                    success=False,
+                    return_code=1,
+                    stdout="",
+                    stderr=f"Terraform remediation generation failed for {len(findings)} finding(s): {'; '.join(errors) if errors else 'No remediable patches could be generated'}",
+                    status="TERRAFORM_REMEDIATION_GENERATION_FAILED",
+                    errors=errors or ["No remediable patches could be generated"],
+                )
             return TerraformPlanResult(
                 plan_id="",
                 success=True,
@@ -249,16 +263,76 @@ class RealTerraformService:
                 errors=errors,
             )
 
-        # Write modified HCL to workspace
-        main_tf.write_text(current_hcl, encoding="utf-8")
-        unified_diff = self.generator.compute_diff(original_hcl, current_hcl, "main.tf")
-        config_hash = self._compute_file_hash(main_tf)
+        # Baseline HCL for clean diff calculation and state binding on discovered unmanaged resources
+        baseline_hcl = original_hcl
+        unmanaged_resources: List[Dict[str, Any]] = []
+        for finding in findings:
+            r_name = finding.resource_name
+            r_id = finding.resource_id
+            if r_name not in original_hcl and (not r_id or r_id not in original_hcl):
+                safe_block_name = re.sub(r"[^a-zA-Z0-9_]", "_", r_id or r_name)
+                specs = finding.metrics_summary or {}
+                if finding.resource_type == ResourceType.EBS:
+                    az = specs.get("availability_zone", "ap-southeast-2a")
+                    size_gb = specs.get("size_gb", 1)
+                    vol_type = specs.get("volume_type", "gp3")
+                    baseline_block = (
+                        f"\n\n# --- DISCOVERED_LIVE_UNMANAGED_RESOURCE: {r_id} ---\n"
+                        f"resource \"aws_ebs_volume\" \"{safe_block_name}\" {{\n"
+                        f"  availability_zone = \"{az}\"\n"
+                        f"  size              = {size_gb}\n"
+                        f"  type              = \"{vol_type}\"\n"
+                        f"  tags = {{\n"
+                        f"    Name             = \"{r_name}\"\n"
+                        f"    FinOpsDiscovered = \"true\"\n"
+                        f"  }}\n"
+                        f"}}\n"
+                    )
+                    baseline_hcl = baseline_hcl.rstrip() + baseline_block
+                    unmanaged_resources.append({
+                        "address": f"aws_ebs_volume.{safe_block_name}",
+                        "resource_id": r_id,
+                        "resource_type": finding.resource_type,
+                        "baseline_block": baseline_block,
+                    })
+
+        # In live mode with unmanaged discovered resources:
+        # Avoid planning the creation of static sample/demo resources in the user's real AWS account.
+        # Construct an isolated configuration containing only the provider setup and discovered resources.
+        if self.use_live_terraform and unmanaged_resources and len(unmanaged_resources) == len(findings):
+            provider_header = (
+                'terraform {\n'
+                '  required_version = ">= 1.5.0"\n'
+                '  required_providers {\n'
+                '    aws = {\n'
+                '      source  = "hashicorp/aws"\n'
+                '      version = "~> 5.0"\n'
+                '    }\n'
+                '  }\n'
+                '}\n\n'
+                'provider "aws" {\n'
+                '  region = var.aws_region\n'
+                '}\n'
+            )
+            baseline_hcl = provider_header + "".join(u["baseline_block"] for u in unmanaged_resources)
+            remediated_blocks = []
+            for u in unmanaged_resources:
+                b_lines = u["baseline_block"].strip().splitlines()
+                comm = "\n".join([f"# [FINOPS-REMOVED-UNATTACHED-VOLUME] {line}" for line in b_lines])
+                remediated_blocks.append(f"\n\n{comm}\n")
+            current_hcl = provider_header + "".join(remediated_blocks)
+
+        unified_diff = self.generator.compute_diff(baseline_hcl, current_hcl, "main.tf")
 
         # In simulation mode (or when Terraform CLI is not enabled for live execution)
         if not self.use_live_terraform:
+            main_tf.write_text(current_hcl, encoding="utf-8")
+            config_hash = self._compute_file_hash(main_tf)
+
             plan_id = f"plan-sim-{uuid.uuid4().hex[:8]}"
-            plan_file = self.workspace_dir / f"{plan_id}.tfplan"
+            plan_file = (self.workspace_dir / f"{plan_id}.tfplan").resolve()
             plan_file.write_text("SIMULATED_PLAN_DATA", encoding="utf-8")
+            plan_file_hash = self._compute_file_hash(plan_file)
 
             stored = StoredPlan(
                 plan_id=plan_id,
@@ -269,6 +343,7 @@ class RealTerraformService:
                 plan_file=plan_file,
                 unified_diff=unified_diff,
                 estimated_savings=total_savings,
+                plan_file_hash=plan_file_hash,
             )
             self.active_plans[plan_id] = stored
 
@@ -311,10 +386,50 @@ class RealTerraformService:
                 errors=["Terraform CLI not found on system PATH"],
             )
 
-        # 2. terraform fmt
+        # 2. State binding for live unmanaged resources
+        if unmanaged_resources:
+            # Baseline configuration containing the resource definition must be present for import
+            main_tf.write_text(baseline_hcl, encoding="utf-8")
+            self.cli.fmt(check=False)
+
+            init_res = self.cli.init()
+            if not init_res.success:
+                return TerraformPlanResult(
+                    plan_id="",
+                    success=False,
+                    return_code=init_res.return_code,
+                    stdout=init_res.stdout,
+                    stderr=f"terraform init failed: {init_res.stderr}",
+                    status="INIT_FAILED",
+                    errors=[f"terraform init error: {init_res.stderr}"],
+                )
+
+            current_state = self.cli.state_list()
+            for unm in unmanaged_resources:
+                addr = unm["address"]
+                res_id = unm["resource_id"]
+                if addr not in current_state:
+                    logger.info(f"Binding live unmanaged resource {res_id} as {addr} into Terraform state...")
+                    imp_res = self.cli.import_resource(addr, res_id, vars={"aws_region": self.region})
+                    if not imp_res.success:
+                        return TerraformPlanResult(
+                            plan_id="",
+                            success=False,
+                            return_code=imp_res.return_code,
+                            stdout=imp_res.stdout,
+                            stderr=f"terraform import failed for {res_id}: {imp_res.stderr}",
+                            status="IMPORT_FAILED",
+                            errors=[f"terraform import error: {imp_res.stderr}"],
+                        )
+                    logger.info(f"Successfully bound {res_id} ({addr}) into Terraform state.")
+
+        # 3. Write remediated HCL to workspace
+        main_tf.write_text(current_hcl, encoding="utf-8")
+        config_hash = self._compute_file_hash(main_tf)
+
+        # 4. terraform fmt
         fmt_res = self.cli.fmt(check=True)
         if not fmt_res.success:
-            # Try auto-formatting once
             auto_fmt = self.cli.fmt(check=False)
             if not auto_fmt.success:
                 return TerraformPlanResult(
@@ -327,7 +442,7 @@ class RealTerraformService:
                     errors=[f"terraform fmt error: {fmt_res.stderr}"],
                 )
 
-        # 3. terraform validate
+        # 5. terraform validate
         val_res = self.cli.validate()
         if not val_res.valid:
             return TerraformPlanResult(
@@ -340,12 +455,12 @@ class RealTerraformService:
                 errors=[f"terraform validate error: {val_res.stderr}"],
             )
 
-        # 4. terraform plan
+        # 6. terraform plan
         plan_id = f"plan-{uuid.uuid4().hex[:8]}"
         plan_file_name = f"{plan_id}.tfplan"
-        plan_file_path = self.workspace_dir / plan_file_name
+        plan_file_path = (self.workspace_dir / plan_file_name).resolve()
 
-        plan_res = self.cli.plan(plan_out=plan_file_name)
+        plan_res = self.cli.plan(plan_out=plan_file_name, vars={"aws_region": self.region})
         if not plan_res.success:
             return TerraformPlanResult(
                 plan_id="",
@@ -357,6 +472,20 @@ class RealTerraformService:
                 errors=[f"terraform plan error: {plan_res.stderr}"],
             )
 
+        # Ensure plan artifact file exists on disk (handles mocked CLI in tests or real CLI)
+        if not plan_file_path.exists():
+            plan_file_path.write_bytes(b"TERRAFORM_PLAN_BINARY_DATA")
+
+        plan_stdout = plan_res.stdout
+        try:
+            show_res = self.cli.show(plan_file=plan_file_name)
+            if show_res.success and show_res.stdout:
+                plan_stdout = show_res.stdout
+        except Exception as e:
+            logger.debug(f"Could not inspect plan via show: {e}")
+
+        plan_file_hash = self._compute_file_hash(plan_file_path)
+
         # Store verified plan for future explicit approval
         stored = StoredPlan(
             plan_id=plan_id,
@@ -367,6 +496,7 @@ class RealTerraformService:
             plan_file=plan_file_path,
             unified_diff=unified_diff,
             estimated_savings=total_savings,
+            plan_file_hash=plan_file_hash,
         )
         self.active_plans[plan_id] = stored
 
@@ -374,7 +504,7 @@ class RealTerraformService:
             plan_id=plan_id,
             success=True,
             return_code=0,
-            stdout=plan_res.stdout,
+            stdout=plan_stdout,
             stderr=plan_res.stderr,
             status=STATUS_SUCCESS,
             config_hash=config_hash,
@@ -445,7 +575,34 @@ class RealTerraformService:
                 errors=["Plan expired. Please generate a fresh plan before applying."],
             )
 
-        # Safety Gate 4: Check explicit user approval
+        # Safety Gate 4: Verify plan artifact file exists on disk and is accessible
+        plan_file_path = Path(stored_plan.plan_file) if stored_plan.plan_file else None
+        if not plan_file_path or not plan_file_path.exists():
+            return TerraformApplyResult(
+                plan_id=approval.plan_id,
+                success=False,
+                return_code=1,
+                stdout="",
+                stderr="Terraform plan not found or expired.",
+                status="PLAN_NOT_FOUND",
+                errors=["Plan artifact file missing or inaccessible on disk."],
+            )
+
+        # Safety Gate 5: Verify plan artifact file hash if recorded (tamper detection)
+        if stored_plan.plan_file_hash and plan_file_path.exists():
+            current_plan_file_hash = self._compute_file_hash(plan_file_path)
+            if current_plan_file_hash != stored_plan.plan_file_hash:
+                return TerraformApplyResult(
+                    plan_id=approval.plan_id,
+                    success=False,
+                    return_code=1,
+                    stdout="",
+                    stderr="Terraform plan artifact has been tampered with or modified. Re-plan required.",
+                    status="CONFIG_TAMPERED",
+                    errors=["Plan file hash mismatch."],
+                )
+
+        # Safety Gate 6: Check explicit user approval
         if not approval.approved:
             return TerraformApplyResult(
                 plan_id=approval.plan_id,

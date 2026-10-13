@@ -228,6 +228,16 @@ class AWSMetricsService:
                     elif r_type == ResourceType.EBS and m_name == "VolumeReadOps":
                         res.metrics["read_ops_sum"] = summary["sum"]
                         res.metrics["has_real_metrics"] = True
+                else:
+                    if r_type == ResourceType.EC2 and m_name == "CPUUtilization":
+                        res.metrics.setdefault("cpu_utilization_avg", None)
+                        res.metrics.setdefault("has_real_metrics", False)
+                    elif r_type == ResourceType.LAMBDA and m_name == "Invocations":
+                        res.metrics.setdefault("invocations_period_sum", None)
+                        res.metrics.setdefault("has_real_metrics", False)
+                    elif r_type == ResourceType.EBS and m_name == "VolumeReadOps":
+                        res.metrics.setdefault("read_ops_sum", None)
+                        res.metrics.setdefault("has_real_metrics", False)
 
             resource_metrics[res.id] = res_entry
             status["collected_count"] += 1

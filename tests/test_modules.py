@@ -1,4 +1,4 @@
-﻿"""
+"""
 Comprehensive Test Suite for FinOps Cloud Waste Hunter & Auto-Remediator
 Tests Modules 1 through 7 and End-to-End Orchestration Engine.
 ISWE309L Cloud Computing - Course Project Review-1
@@ -87,7 +87,7 @@ class TestFinOpsModules(unittest.TestCase):
         for r in recs:
             self.assertTrue(r.title)
             self.assertTrue(r.executive_summary)
-            self.assertTrue("nova-lite" in r.model_used.lower() or "nova" in r.model_used.lower())
+            self.assertTrue("gemini" in r.model_used.lower() or "nova" in r.model_used.lower())
             self.assertTrue(len(r.steps_to_remediate) > 0)
             self.assertTrue(r.rollback_plan)
 

@@ -68,20 +68,20 @@ class WasteDetectionModule:
     def _check_ebs_waste(self, res: CloudResource) -> WasteFinding | None:
         metrics = res.metrics
         specs = res.specs
-        days_unattached = metrics.get("days_unattached", 0)
+        days_unattached = metrics.get("days_unattached")
         is_unattached = (
             specs.get("is_unattached") is True or
             res.state == "available" or
             metrics.get("attachment_status") == "unattached" or
-            days_unattached > 0
+            (days_unattached is not None and days_unattached > 0)
         )
 
         # Flag unattached volumes in either real AWS or simulation (where days >= 7)
         if is_unattached:
             size_gb = specs.get("size_gb", 0)
             vol_type = specs.get("volume_type", "gp3")
-            days_label = f" for {days_unattached} days" if days_unattached > 0 else ""
-            severity = Severity.CRITICAL if (size_gb >= 500 or days_unattached >= 30) else Severity.HIGH
+            days_label = f" for {days_unattached} days" if (days_unattached is not None and days_unattached > 0) else ""
+            severity = Severity.CRITICAL if (size_gb >= 500 or (days_unattached is not None and days_unattached >= 30)) else Severity.HIGH
 
             return WasteFinding(
                 id=f"waste-ebs-{res.id[-8:]}",
@@ -101,7 +101,8 @@ class WasteDetectionModule:
                     "days_unattached": days_unattached,
                     "size_gb": size_gb,
                     "volume_type": vol_type,
-                    "is_unattached": True
+                    "is_unattached": True,
+                    "read_ops_sum": metrics.get("read_ops_sum")
                 }
             )
         return None

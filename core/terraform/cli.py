@@ -16,6 +16,7 @@ Team: Vivek Pandey (24MIS0216) & S. Hemal (24MIS0050)
 import os
 import re
 import time
+import shlex
 import shutil
 import logging
 import subprocess
@@ -56,17 +57,57 @@ def sanitize_output(text: str) -> str:
 class TerraformCLI:
     """Executes Terraform CLI commands safely using subprocess without shell=True."""
 
-    def __init__(self, workspace_dir: Path, binary_name: str = "terraform", timeout: int = DEFAULT_TIMEOUT_SECONDS):
-        self.workspace_dir = Path(workspace_dir)
+    def __init__(
+        self,
+        workspace_dir: Path,
+        binary_name: str = "terraform",
+        timeout: int = DEFAULT_TIMEOUT_SECONDS,
+        use_wsl: Optional[bool] = None,
+    ):
+        self.workspace_dir = Path(workspace_dir).resolve()
         self.binary_name = binary_name
         self.timeout = timeout
 
+        # Resolve Linux binary for WSL bypass (avoids Windows local network proxy/antivirus TLS interception)
+        base_dir = Path(__file__).resolve().parent.parent.parent
+        self.linux_binary = base_dir / "storage" / "tf_linux" / "terraform"
+        self.wsl_binary = shutil.which("wsl")
+
+        if use_wsl is not None:
+            self.use_wsl = use_wsl
+        else:
+            is_testing = bool(os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("UNITTEST"))
+            self.use_wsl = (
+                not is_testing
+                and os.name == "nt"
+                and self.wsl_binary is not None
+                and self.linux_binary.exists()
+            )
+
+    def _to_wsl_path(self, path: Path) -> str:
+        """Converts Windows Path C:\\foo\\bar to WSL path /mnt/c/foo/bar."""
+        resolved = path.resolve()
+        drive = resolved.drive.replace(":", "").lower()
+        parts = list(resolved.parts[1:])
+        return f"/mnt/{drive}/" + "/".join(parts)
+
     def resolve_binary(self) -> Optional[str]:
-        """Resolves the terraform executable path on the system PATH."""
+        """Resolves the terraform executable path."""
+        if self.use_wsl and self.linux_binary.exists() and self.wsl_binary:
+            return str(self.linux_binary)
         return shutil.which(self.binary_name)
 
     def is_installed(self) -> Tuple[bool, str]:
         """Checks if Terraform CLI is available and functional."""
+        if self.use_wsl:
+            if not self.linux_binary.exists() or not self.wsl_binary:
+                return False, STATUS_TERRAFORM_NOT_INSTALLED
+            res = self.run_command(["version"], timeout=10)
+            if res.success:
+                first_line = res.stdout.strip().splitlines()[0] if res.stdout else "Terraform"
+                return True, sanitize_output(first_line)
+            return False, f"Terraform returned exit code {res.return_code}: {res.stderr.strip()}"
+
         binary_path = self.resolve_binary()
         if not binary_path:
             return False, STATUS_TERRAFORM_NOT_INSTALLED
@@ -101,20 +142,6 @@ class TerraformCLI:
         Executes a terraform subcommand with safe arguments and environment.
         NEVER uses shell=True.
         """
-        binary_path = self.resolve_binary()
-        if not binary_path:
-            logger.warning("Terraform CLI not found on system PATH.")
-            return TerraformCommandResult(
-                command=[self.binary_name] + args,
-                success=False,
-                return_code=127,
-                stdout="",
-                stderr="Terraform CLI executable is not installed or not in PATH.",
-                status=STATUS_TERRAFORM_NOT_INSTALLED,
-                duration_seconds=0.0,
-            )
-
-        cmd = [binary_path] + args
         start_time = time.time()
         timeout_val = timeout or self.timeout
 
@@ -124,6 +151,47 @@ class TerraformCLI:
         exec_env = os.environ.copy()
         if env:
             exec_env.update(env)
+
+        if self.use_wsl:
+            if not self.wsl_binary or not self.linux_binary.exists():
+                return TerraformCommandResult(
+                    command=[self.binary_name] + args,
+                    success=False,
+                    return_code=127,
+                    stdout="",
+                    stderr="Terraform CLI executable is not installed or WSL is unavailable.",
+                    status=STATUS_TERRAFORM_NOT_INSTALLED,
+                    duration_seconds=0.0,
+                )
+            wsl_workspace = self._to_wsl_path(self.workspace_dir)
+            wsl_tf = self._to_wsl_path(self.linux_binary)
+            quoted_args = " ".join(shlex.quote(a) for a in args)
+
+            env_exports = ""
+            for k in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_DEFAULT_REGION", "AWS_REGION"):
+                if k in exec_env and exec_env[k]:
+                    env_exports += f"export {k}={shlex.quote(str(exec_env[k]))}; "
+            if env:
+                for k, v in env.items():
+                    if k not in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_DEFAULT_REGION", "AWS_REGION"):
+                        env_exports += f"export {k}={shlex.quote(str(v))}; "
+
+            bash_cmd = f"cd {shlex.quote(wsl_workspace)} && {env_exports}{shlex.quote(wsl_tf)} {quoted_args}"
+            cmd = [self.wsl_binary, "bash", "-c", bash_cmd]
+        else:
+            binary_path = self.resolve_binary()
+            if not binary_path:
+                logger.warning("Terraform CLI not found on system PATH.")
+                return TerraformCommandResult(
+                    command=[self.binary_name] + args,
+                    success=False,
+                    return_code=127,
+                    stdout="",
+                    stderr="Terraform CLI executable is not installed or not in PATH.",
+                    status=STATUS_TERRAFORM_NOT_INSTALLED,
+                    duration_seconds=0.0,
+                )
+            cmd = [binary_path] + args
 
         try:
             logger.info(f"Running Terraform command: {' '.join(cmd)} in {self.workspace_dir}")
@@ -182,6 +250,34 @@ class TerraformCLI:
                 duration_seconds=round(time.time() - start_time, 3),
             )
 
+    def init(self, upgrade: bool = False) -> TerraformCommandResult:
+        """Runs terraform init -no-color [-upgrade]."""
+        args = ["init", "-no-color", "-input=false"]
+        if upgrade:
+            args.append("-upgrade")
+        return self.run_command(args)
+
+    def state_list(self) -> List[str]:
+        """Runs terraform state list -no-color and returns resource addresses in state."""
+        res = self.run_command(["state", "list"])
+        if not res.success or not res.stdout:
+            return []
+        return [line.strip() for line in res.stdout.splitlines() if line.strip()]
+
+    def import_resource(
+        self,
+        address: str,
+        resource_id: str,
+        vars: Optional[Dict[str, str]] = None
+    ) -> TerraformCommandResult:
+        """Runs terraform import -no-color [-var=k=v] <address> <resource_id>."""
+        args = ["import", "-no-color", "-input=false"]
+        if vars:
+            for k, v in vars.items():
+                args.append(f"-var={k}={v}")
+        args.extend([address, resource_id])
+        return self.run_command(args)
+
     def fmt(self, check: bool = False) -> TerraformFmtResult:
         """Runs terraform fmt or terraform fmt -check."""
         args = ["fmt", "-no-color"]
@@ -233,11 +329,25 @@ class TerraformCLI:
             error_count=error_count,
         )
 
-    def plan(self, plan_out: Optional[str] = None) -> TerraformCommandResult:
-        """Runs terraform plan -no-color [-out=...]."""
+    def plan(
+        self,
+        plan_out: Optional[str] = None,
+        vars: Optional[Dict[str, str]] = None
+    ) -> TerraformCommandResult:
+        """Runs terraform plan -no-color -input=false [-var=k=v] [-out=...]."""
         args = ["plan", "-no-color", "-input=false"]
+        if vars:
+            for k, v in vars.items():
+                args.append(f"-var={k}={v}")
         if plan_out:
             args.append(f"-out={plan_out}")
+        return self.run_command(args)
+
+    def show(self, plan_file: Optional[str] = None) -> TerraformCommandResult:
+        """Runs terraform show -no-color [plan_file]."""
+        args = ["show", "-no-color"]
+        if plan_file:
+            args.append(plan_file)
         return self.run_command(args)
 
     def apply(self, plan_file: Optional[str] = None) -> TerraformCommandResult:

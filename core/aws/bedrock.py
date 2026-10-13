@@ -155,7 +155,8 @@ class AWSBedrockAdvisorService:
                 # If converse is not supported by legacy client, fallback to invoke_model
                 if isinstance(conv_err, ClientError):
                     code = conv_err.response.get("Error", {}).get("Code", "")
-                    if code not in ("UnknownServiceError", "ValidationException"):
+                    msg = conv_err.response.get("Error", {}).get("Message", "")
+                    if code != "UnknownServiceError" and "not supported" not in msg.lower():
                         raise conv_err
 
                 body = json.dumps({
@@ -190,6 +191,8 @@ class AWSBedrockAdvisorService:
             parsed_dict = json.loads(cleaned_text)
             validated = BedrockStructuredOutput.model_validate(parsed_dict)
 
+            rec_savings = validated.estimated_savings if validated.estimated_savings is not None else (cost.monthly_savings if cost else None)
+
             recommendation = AIRecommendation(
                 finding_id=finding.id,
                 resource_id=finding.resource_id,
@@ -201,6 +204,7 @@ class AWSBedrockAdvisorService:
                 steps_to_remediate=validated.steps_to_remediate,
                 rollback_plan=validated.rollback_plan,
                 confidence_score=validated.confidence_score,
+                estimated_monthly_savings=rec_savings,
                 model_used=f"{self.model_id} (Real Amazon Bedrock)"
             )
 

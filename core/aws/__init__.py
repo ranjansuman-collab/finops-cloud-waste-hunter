@@ -23,7 +23,14 @@ from core.aws.discovery import (
 
 from core.aws.metrics import AWSMetricsService
 from core.aws.costs import AWSCostService
-from core.aws.bedrock import AWSBedrockAdvisorService, STATUS_MODEL_NOT_AVAILABLE
+def __getattr__(name: str):
+    if name in ("GeminiAdvisorService", "AWSBedrockAdvisorService"):
+        from core.gemini_advisor import GeminiAdvisorService
+        return GeminiAdvisorService
+    if name == "STATUS_MODEL_NOT_AVAILABLE":
+        from core.gemini_advisor import STATUS_MODEL_NOT_AVAILABLE
+        return STATUS_MODEL_NOT_AVAILABLE
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     "AWSConnectionService",

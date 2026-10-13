@@ -54,6 +54,51 @@ def get_configured_region(override_region: Optional[str] = None) -> str:
     ).strip()
 
 
+def setup_windows_ca_bundle() -> None:
+    """
+    On Windows systems where TLS certificates are managed in the Windows Certificate Store
+    (e.g., enterprise proxies or system cert stores), botocore/requests may raise
+    SSLCertVerificationError because they bundle Mozilla certs only.
+    This helper safely combines certifi with Windows ROOT and CA stores and sets
+    AWS_CA_BUNDLE and REQUESTS_CA_BUNDLE so all Boto3 and requests operations succeed.
+    """
+    if os.name != "nt":
+        return
+    if os.getenv("AWS_CA_BUNDLE") or os.getenv("SSL_CERT_FILE"):
+        return
+    try:
+        import ssl
+        import certifi
+        import tempfile
+        root_certs = ssl.enum_certificates("ROOT")
+        ca_certs = ssl.enum_certificates("CA")
+        if not root_certs and not ca_certs:
+            return
+        pems = []
+        for c in (root_certs + ca_certs):
+            try:
+                pems.append(ssl.DER_cert_to_PEM_cert(c[0]))
+            except Exception:
+                pass
+        if not pems:
+            return
+
+        bundle_path = os.path.join(tempfile.gettempdir(), "finops_windows_ca_bundle.pem")
+        base_certifi = ""
+        try:
+            with open(certifi.where(), "r", encoding="utf-8") as f:
+                base_certifi = f.read()
+        except Exception:
+            pass
+        with open(bundle_path, "w", encoding="utf-8") as f:
+            f.write(base_certifi + "\n" + "\n".join(pems))
+
+        os.environ["AWS_CA_BUNDLE"] = bundle_path
+        os.environ["REQUESTS_CA_BUNDLE"] = bundle_path
+    except Exception as e:
+        logger.debug(f"Unable to auto-configure Windows CA bundle: {e}")
+
+
 def get_aws_session(
     region_name: Optional[str] = None,
     profile_name: Optional[str] = None
@@ -66,6 +111,7 @@ def get_aws_session(
     - AWS SSO / IAM Identity Center
     - Instance profile / ECS container credentials
     """
+    setup_windows_ca_bundle()
     target_region = get_configured_region(region_name)
     target_profile = profile_name or os.getenv("AWS_PROFILE")
 
@@ -121,6 +167,7 @@ def classify_aws_error(exc: Exception) -> Tuple[str, str]:
             or "subscription required" in lower_msg
             or "opt-in required" in lower_msg
             or "not subscribed" in lower_msg
+            or "operation not allowed" in lower_msg
         ):
             return STATUS_ACCOUNT_VERIFICATION_REQUIRED, f"[{code}] {message}"
 

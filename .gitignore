@@ -35,3 +35,4 @@ crash.*.log
 *.tfplan
 *.plan
 storage/terraform_workspace/
+storage/tf_linux/

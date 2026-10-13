@@ -1,18 +1,19 @@
 """
 Module 4: AI Recommendation Engine
-Delegates to AWSBedrockAdvisorService in LIVE AWS mode for real Bedrock analysis.
+Delegates to GeminiAdvisorService in LIVE AWS mode for real Google Gemini analysis.
 Falls back to built-in intelligent FinOps reasoning only in SIMULATION mode.
 
 ISWE309L Cloud Computing - Course Project Review-1
 Team: Vivek Pandey (24MIS0216) & S. Hemal (24MIS0050)
 
 SAFETY:
-- Bedrock is analysis/recommendation ONLY.
-- Bedrock NEVER modifies AWS resources.
-- Bedrock NEVER executes Terraform or terraform apply.
-- No AWS credentials or secrets are sent to Bedrock.
+- Gemini is analysis/recommendation ONLY.
+- Gemini NEVER modifies AWS resources.
+- Gemini NEVER executes Terraform or terraform apply.
+- No AWS credentials or secrets are sent to Gemini.
 """
 
+import os
 import logging
 from typing import List, Optional
 
@@ -26,10 +27,16 @@ from core.aws.connection import (
     STATUS_CONNECTED,
     STATUS_CREDENTIALS_MISSING,
     STATUS_NO_PERMISSION,
-    STATUS_ACCOUNT_VERIFICATION_REQUIRED,
+    STATUS_NOT_AVAILABLE,
     STATUS_ERROR,
 )
-from core.aws.bedrock import STATUS_MODEL_NOT_AVAILABLE
+from core.gemini_advisor import (
+    GeminiAdvisorService,
+    DEFAULT_GEMINI_MODEL,
+    STATUS_MODEL_NOT_AVAILABLE,
+    STATUS_RATE_LIMITED,
+    STATUS_NETWORK_ERROR,
+)
 
 logger = logging.getLogger("finops.module4")
 
@@ -38,24 +45,26 @@ class AIAdvisorModule:
     """
     Implements FR5 & FR6.
 
-    LIVE mode  — delegates to AWSBedrockAdvisorService which calls Amazon Bedrock
-                 over the standard Boto3 credential chain.  If Bedrock is
-                 unavailable, an explicit error status is surfaced; fake output
-                 is NEVER returned in live mode.
+    LIVE mode  — delegates to GeminiAdvisorService which calls Google Gemini API.
+                 If Gemini is unavailable, an explicit error status is surfaced;
+                 fake output is NEVER returned in live mode.
 
     SIMULATION — uses the built-in intelligent FinOps reasoning engine that
                  produces realistic static recommendations without any real AWS
-                 calls or Bedrock invocations.
+                 calls or Gemini invocations.
     """
 
-    # Default model exposed for informational purposes; actual value is read at
-    # runtime from FINOPS_BEDROCK_MODEL / BEDROCK_MODEL_ID env vars inside
-    # AWSBedrockAdvisorService.
-    DEFAULT_MODEL_ID = "amazon.nova-lite-v1:0"
+    DEFAULT_MODEL_ID = DEFAULT_GEMINI_MODEL
 
-    def __init__(self, region_name: str = "ap-southeast-2", use_live_aws: bool = False):
+    def __init__(
+        self,
+        region_name: str = "ap-southeast-2",
+        use_live_aws: bool = False,
+        model_id: Optional[str] = None,
+    ):
         self.region_name = region_name
         self.use_live_aws = use_live_aws
+        self.model_id = model_id or os.getenv("GEMINI_MODEL") or self.DEFAULT_MODEL_ID
 
     # ------------------------------------------------------------------
     # Public API
@@ -70,19 +79,18 @@ class AIAdvisorModule:
         """
         Generates recommendations for every waste finding.
 
-        In LIVE mode the entire batch is delegated to AWSBedrockAdvisorService.
-        The service enforces the standard Boto3 credential chain and the FinOps
-        safety prompt, and returns explicit status errors when Bedrock cannot be
-        reached.
+        In LIVE mode the entire batch is delegated to GeminiAdvisorService.
+        The service enforces the safety prompt and returns explicit status
+        errors when Gemini cannot be reached.
 
-        In SIMULATION mode local intelligent reasoning is used; Bedrock is
+        In SIMULATION mode local intelligent reasoning is used; Gemini is
         never contacted.
         """
         if not findings:
             return []
 
         if self.use_live_aws:
-            return self._generate_via_bedrock(findings, costs, model_id=model_id)
+            return self._generate_via_gemini(findings, costs, model_id=model_id)
 
         # Simulation / demo mode: safe local reasoning
         cost_map = {c.finding_id: c for c in (costs or [])}
@@ -92,32 +100,31 @@ class AIAdvisorModule:
         ]
 
     # ------------------------------------------------------------------
-    # Live Bedrock path
+    # Live Gemini path
     # ------------------------------------------------------------------
 
-    def _generate_via_bedrock(
+    def _generate_via_gemini(
         self,
         findings: List[WasteFinding],
         costs: Optional[List[CostFinding]],
         model_id: Optional[str] = None,
     ) -> List[AIRecommendation]:
         """
-        Calls AWSBedrockAdvisorService to get real recommendations.
-        If Bedrock cannot be reached, raises RuntimeError with the status code
+        Calls GeminiAdvisorService to get real recommendations.
+        If Gemini cannot be reached, raises RuntimeError with the status code
         so the caller (engine or endpoint) can surface an explicit error rather
         than silently returning fake output.
         """
-        from core.aws.bedrock import AWSBedrockAdvisorService
-
-        svc = AWSBedrockAdvisorService(
+        target_model = model_id or self.model_id
+        svc = GeminiAdvisorService(
             region_name=self.region_name,
-            model_id=model_id,
+            model_id=target_model,
         )
         result = svc.generate_all_recommendations(
             findings=findings,
             costs=costs,
             region_name=self.region_name,
-            model_id=model_id,
+            model_id=target_model,
         )
 
         status = result.get("status", STATUS_ERROR)
@@ -126,15 +133,17 @@ class AIAdvisorModule:
         if status != STATUS_CONNECTED or not result.get("recommendations"):
             if result.get("recommendations"):
                 # Partial success: some findings got recommendations, some failed.
-                # Convert successfully returned dicts back to AIRecommendation objects.
                 return [AIRecommendation(**r) for r in result["recommendations"]]
             # Total failure — raise so the caller can communicate the real status.
             errors = result.get("errors") or []
             raise RuntimeError(
-                f"BEDROCK_ERROR:{status}:{'; '.join(errors) if errors else 'Bedrock unavailable'}"
+                f"GEMINI_ERROR:{status}:{'; '.join(errors) if errors else 'Gemini unavailable'}"
             )
 
         return [AIRecommendation(**r) for r in result["recommendations"]]
+
+    # Backwards-compatibility alias
+    _generate_via_bedrock = _generate_via_gemini
 
     # ------------------------------------------------------------------
     # Simulation / demo mode — local intelligent FinOps reasoning
@@ -147,6 +156,7 @@ class AIAdvisorModule:
     ) -> AIRecommendation:
         savings_text = f"${cost.monthly_savings:.2f}/mo" if cost else "substantial cost"
         annual_text = f"${cost.annualized_savings:.2f}/yr" if cost else ""
+        est_savings = cost.monthly_savings if cost else None
 
         if finding.waste_category == WasteCategory.OVERSIZED_COMPUTE:
             target_type = finding.metrics_summary.get("recommended_instance_type", "t3.medium")
@@ -156,7 +166,7 @@ class AIAdvisorModule:
                 resource_name=finding.resource_name,
                 title=f"Downsize Compute Instance '{finding.resource_name}' to {target_type}",
                 executive_summary=(
-                    f"Nova Lite identified that '{finding.resource_name}' is operating at only "
+                    f"Gemini identified that '{finding.resource_name}' is operating at only "
                     f"{finding.metrics_summary.get('cpu_utilization_avg', 0)}% average CPU. Downsizing will "
                     f"recover {savings_text} ({annual_text}) with zero application latency penalty."
                 ),
@@ -178,6 +188,9 @@ class AIAdvisorModule:
                     f"instance type via `terraform apply` within 3 minutes."
                 ),
                 confidence_score=0.98,
+                estimated_monthly_savings=est_savings,
+                proposed_action="DOWNSIZE_INSTANCE",
+                action_type="RESIZE",
                 model_used=self.DEFAULT_MODEL_ID
             )
 
@@ -190,7 +203,7 @@ class AIAdvisorModule:
                 resource_name=finding.resource_name,
                 title=f"Archive & Purge Abandoned EBS Volume '{finding.resource_name}'",
                 executive_summary=(
-                    f"Nova Lite verified that this {size_gb}GB EBS volume has been detached for {days} days. "
+                    f"Gemini verified that this {size_gb}GB EBS volume has been detached for {days} days. "
                     f"Terminating it saves {savings_text} recurring spend immediately."
                 ),
                 risk_level="Low Risk",
@@ -210,6 +223,9 @@ class AIAdvisorModule:
                     "via `aws ec2 create-volume --snapshot-id <snap_id>`."
                 ),
                 confidence_score=0.99,
+                estimated_monthly_savings=est_savings,
+                proposed_action="DELETE_UNATTACHED_VOLUME",
+                action_type="DELETE",
                 model_used=self.DEFAULT_MODEL_ID
             )
 
@@ -236,6 +252,9 @@ class AIAdvisorModule:
                 ],
                 rollback_plan="Redeploy function from S3 zipped archive using existing CI/CD deployment pipeline.",
                 confidence_score=0.97,
+                estimated_monthly_savings=est_savings,
+                proposed_action="DEPRECATE_SERVERLESS_FUNCTION",
+                action_type="DELETE",
                 model_used=self.DEFAULT_MODEL_ID
             )
 
@@ -246,7 +265,7 @@ class AIAdvisorModule:
                 resource_name=finding.resource_name,
                 title=f"Release Unused Networking Asset '{finding.resource_name}'",
                 executive_summary=(
-                    f"Nova Lite identified idle networking component incurring reservation fees without active traffic. "
+                    f"Gemini identified idle networking component incurring reservation fees without active traffic. "
                     f"Releasing reclaims {savings_text}."
                 ),
                 risk_level="Low Risk",
@@ -261,6 +280,9 @@ class AIAdvisorModule:
                 ],
                 rollback_plan="Allocate new Elastic IP if required and update DNS records via automation.",
                 confidence_score=0.99,
+                estimated_monthly_savings=est_savings,
+                proposed_action="RELEASE_UNASSOCIATED_IP",
+                action_type="DISASSOCIATE",
                 model_used=self.DEFAULT_MODEL_ID
             )
 
@@ -275,5 +297,8 @@ class AIAdvisorModule:
             steps_to_remediate=["Review resource in console", "Apply Terraform adjustment"],
             rollback_plan="Revert Terraform commit.",
             confidence_score=0.90,
+            estimated_monthly_savings=est_savings,
+            proposed_action="MODIFY_RESOURCE",
+            action_type="MODIFY",
             model_used=self.DEFAULT_MODEL_ID
         )

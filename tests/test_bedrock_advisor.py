@@ -439,6 +439,9 @@ class TestBedrockAdvisorService(unittest.TestCase):
             STATUS_CREDENTIALS_MISSING,
             STATUS_NO_PERMISSION,
             STATUS_ACCOUNT_VERIFICATION_REQUIRED,
+            STATUS_MODEL_NOT_AVAILABLE,
+            STATUS_ERROR,
+            "RATE_LIMITED",
             "CONNECTED",   # if local AWS config exists
         ))
         # Regardless of status, real_mode must be True

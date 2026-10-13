@@ -61,6 +61,8 @@ class WasteFinding(BaseModel):
     recommended_specs: str
     confidence_score: float = 0.95
     metrics_summary: Dict[str, Any] = Field(default_factory=dict)
+    estimated_monthly_savings: Optional[float] = None
+    estimated_monthly_waste: Optional[float] = None
 
 
 class CostFinding(BaseModel):
@@ -87,7 +89,12 @@ class AIRecommendation(BaseModel):
     steps_to_remediate: List[str]
     rollback_plan: str
     confidence_score: float
-    model_used: str = "Amazon Bedrock Nova Lite (amazon.nova-lite-v1:0)"
+    estimated_monthly_savings: Optional[float] = None
+    proposed_action: Optional[str] = None
+    action_type: Optional[str] = None
+    terraform_hcl: Optional[str] = None
+    terraform_explanation: Optional[str] = None
+    model_used: str = "Google Gemini (gemini-3.5-flash-lite)"
     timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -135,6 +142,20 @@ class PipelineReport(BaseModel):
     total_carbon_savings_kg: float
     ai_recommendations: List[AIRecommendation]
     terraform_patches: List[TerraformPatch]
+    terraform_plan_id: Optional[str] = None
+    terraform_plan_file: Optional[str] = None
+    terraform_plan_status: Optional[str] = None
+    terraform_plan_stdout: Optional[str] = None
+    terraform_plan_stderr: Optional[str] = None
+    terraform_plan_hash: Optional[str] = None
+    terraform_plan_result: Optional[Dict[str, Any]] = None
     gitops_pr: Optional[GitOpsPR] = None
     s3_uri: str = ""
     dynamodb_id: str = ""
+    is_real_aws: bool = False
+    ai_status: Optional[str] = None
+    ai_error: Optional[str] = None
+    bedrock_status: Optional[str] = None
+    bedrock_error: Optional[str] = None
+    errors: List[str] = Field(default_factory=list)
+

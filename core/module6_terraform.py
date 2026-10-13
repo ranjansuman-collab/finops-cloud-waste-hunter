@@ -14,6 +14,7 @@ from core.models import (
     WasteFinding,
     WasteCategory,
     AIRecommendation,
+    CostFinding,
     TerraformPatch,
     ResourceType
 )
@@ -72,7 +73,7 @@ class TerraformRemediationModule:
     def generate_patches(
         self,
         findings: List[WasteFinding],
-        recommendations: List[AIRecommendation]
+        recommendations: Optional[List[AIRecommendation]] = None
     ) -> List[TerraformPatch]:
         patches: List[TerraformPatch] = []
         main_tf_path = self.tf_dir / "main.tf"
@@ -83,9 +84,11 @@ class TerraformRemediationModule:
 
         original_content = main_tf_path.read_text(encoding="utf-8")
         current_content = original_content
+        rec_map = {r.finding_id: r for r in (recommendations or [])}
 
         for finding in findings:
-            patch = self._generate_single_patch(finding, current_content, str(main_tf_path))
+            rec = rec_map.get(finding.id)
+            patch = self._generate_single_patch(finding, current_content, str(main_tf_path), recommendation=rec)
             if patch:
                 patches.append(patch)
                 # Chain edits for clean multi-resource diff preview
@@ -97,12 +100,14 @@ class TerraformRemediationModule:
         self,
         finding: WasteFinding,
         content: str,
-        filename: str
+        filename: str,
+        recommendation: Optional[AIRecommendation] = None
     ) -> TerraformPatch | None:
         r_name = finding.resource_name
         r_type = finding.resource_type
         action_type = "UNKNOWN"
         new_content = content
+        baseline_content = content
 
         # 1. EC2 Compute Downsizing
         if r_type == ResourceType.EC2 and finding.waste_category == WasteCategory.OVERSIZED_COMPUTE:
@@ -182,11 +187,132 @@ class TerraformRemediationModule:
                 commented = "\n".join([f"# [FINOPS-RELEASED-UNASSOCIATED-EIP] {line}" for line in matched_text.strip().splitlines()])
                 new_content = content.replace(matched_text, commented + "\n")
 
+        is_managed = (
+            (r_name in content) or
+            (bool(finding.resource_id and finding.resource_id in content)) or
+            (new_content != content)
+        )
+
+        if not is_managed:
+            # DISCOVERED_LIVE_UNMANAGED_RESOURCE:
+            # Resource exists in real AWS but was not present in static template files.
+            # Require an active AI recommendation to synthesize remediation HCL for unmanaged live resources.
+            if not recommendation:
+                logger.info(f"Skipping patch generation for unmanaged resource {finding.resource_id}: no AI recommendation available.")
+                return None
+
+            safe_block_name = re.sub(r"[^a-zA-Z0-9_]", "_", finding.resource_id or r_name)
+            specs = finding.metrics_summary or {}
+
+            if r_type == ResourceType.EBS and finding.waste_category == WasteCategory.UNATTACHED_STORAGE:
+                action_type = "DELETE"
+                size_gb = specs.get("size_gb", 1)
+                vol_type = specs.get("volume_type", "gp3")
+                az = specs.get("availability_zone", "ap-southeast-2a")
+
+                baseline_block = (
+                    f"\n\n# --- DISCOVERED_LIVE_UNMANAGED_RESOURCE: {finding.resource_id} ---\n"
+                    f"resource \"aws_ebs_volume\" \"{safe_block_name}\" {{\n"
+                    f"  availability_zone = \"{az}\"\n"
+                    f"  size              = {size_gb}\n"
+                    f"  type              = \"{vol_type}\"\n"
+                    f"  tags = {{\n"
+                    f"    Name             = \"{r_name}\"\n"
+                    f"    FinOpsDiscovered = \"true\"\n"
+                    f"  }}\n"
+                    f"}}\n"
+                )
+                if recommendation and recommendation.terraform_hcl:
+                    hcl_lines = recommendation.terraform_hcl.strip().splitlines()
+                    commented_hcl = "\n".join([
+                        line if line.strip().startswith("#") else f"# [FINOPS-REMOVED-UNATTACHED-VOLUME] {line}"
+                        for line in hcl_lines
+                    ])
+                    patched_block = f"\n\n# --- DISCOVERED_LIVE_UNMANAGED_RESOURCE: {finding.resource_id} ---\n{commented_hcl}\n"
+                else:
+                    patched_block = (
+                        f"\n\n# --- DISCOVERED_LIVE_UNMANAGED_RESOURCE: {finding.resource_id} ---\n"
+                        f"# [FINOPS-REMOVED-UNATTACHED-VOLUME] resource \"aws_ebs_volume\" \"{safe_block_name}\" {{\n"
+                        f"# [FINOPS-REMOVED-UNATTACHED-VOLUME]   availability_zone = \"{az}\"\n"
+                        f"# [FINOPS-REMOVED-UNATTACHED-VOLUME]   size              = {size_gb}\n"
+                        f"# [FINOPS-REMOVED-UNATTACHED-VOLUME]   type              = \"{vol_type}\"\n"
+                        f"# [FINOPS-REMOVED-UNATTACHED-VOLUME]   tags = {{\n"
+                        f"# [FINOPS-REMOVED-UNATTACHED-VOLUME]     Name             = \"{r_name}\"\n"
+                        f"# [FINOPS-REMOVED-UNATTACHED-VOLUME]     FinOpsRemediated = \"true\"\n"
+                        f"# [FINOPS-REMOVED-UNATTACHED-VOLUME]   }}\n"
+                        f"# [FINOPS-REMOVED-UNATTACHED-VOLUME] }}\n"
+                    )
+
+                baseline_content = content.rstrip() + baseline_block
+                new_content = content.rstrip() + patched_block
+
+            elif r_type == ResourceType.EC2 and finding.waste_category == WasteCategory.OVERSIZED_COMPUTE:
+                action_type = "RESIZE"
+                target_type = specs.get("recommended_instance_type", "t3.medium")
+                baseline_block = (
+                    f"\n\n# --- DISCOVERED_LIVE_UNMANAGED_RESOURCE: {finding.resource_id} ---\n"
+                    f"resource \"aws_instance\" \"{safe_block_name}\" {{\n"
+                    f"  instance_type = \"{finding.current_specs or 'm5.2xlarge'}\"\n"
+                    f"  tags = {{\n"
+                    f"    Name = \"{r_name}\"\n"
+                    f"  }}\n"
+                    f"}}\n"
+                )
+                patched_block = (
+                    f"\n\n# --- DISCOVERED_LIVE_UNMANAGED_RESOURCE: {finding.resource_id} ---\n"
+                    f"# [FINOPS-DOWNSIZED-COMPUTE] resource \"aws_instance\" \"{safe_block_name}\" {{\n"
+                    f"# [FINOPS-DOWNSIZED-COMPUTE]   instance_type = \"{target_type}\" # FinOps Downsized\n"
+                    f"# [FINOPS-DOWNSIZED-COMPUTE]   tags = {{\n"
+                    f"# [FINOPS-DOWNSIZED-COMPUTE]     Name = \"{r_name}\"\n"
+                    f"# [FINOPS-DOWNSIZED-COMPUTE]   }}\n"
+                    f"# [FINOPS-DOWNSIZED-COMPUTE] }}\n"
+                )
+                baseline_content = content.rstrip() + baseline_block
+                new_content = content.rstrip() + patched_block
+
+            elif r_type == ResourceType.LAMBDA and finding.waste_category == WasteCategory.IDLE_SERVERLESS:
+                action_type = "DELETE"
+                baseline_block = (
+                    f"\n\n# --- DISCOVERED_LIVE_UNMANAGED_RESOURCE: {finding.resource_id} ---\n"
+                    f"resource \"aws_lambda_function\" \"{safe_block_name}\" {{\n"
+                    f"  function_name = \"{r_name}\"\n"
+                    f"}}\n"
+                )
+                patched_block = (
+                    f"\n\n# --- DISCOVERED_LIVE_UNMANAGED_RESOURCE: {finding.resource_id} ---\n"
+                    f"# [FINOPS-DEPRECATED-DORMANT-LAMBDA] resource \"aws_lambda_function\" \"{safe_block_name}\" {{\n"
+                    f"# [FINOPS-DEPRECATED-DORMANT-LAMBDA]   function_name = \"{r_name}\"\n"
+                    f"# [FINOPS-DEPRECATED-DORMANT-LAMBDA] }}\n"
+                )
+                baseline_content = content.rstrip() + baseline_block
+                new_content = content.rstrip() + patched_block
+
+            elif r_type == ResourceType.EIP:
+                action_type = "DISASSOCIATE"
+                baseline_block = (
+                    f"\n\n# --- DISCOVERED_LIVE_UNMANAGED_RESOURCE: {finding.resource_id} ---\n"
+                    f"resource \"aws_eip\" \"{safe_block_name}\" {{\n"
+                    f"  tags = {{\n"
+                    f"    Name = \"{r_name}\"\n"
+                    f"  }}\n"
+                    f"}}\n"
+                )
+                patched_block = (
+                    f"\n\n# --- DISCOVERED_LIVE_UNMANAGED_RESOURCE: {finding.resource_id} ---\n"
+                    f"# [FINOPS-RELEASED-UNASSOCIATED-EIP] resource \"aws_eip\" \"{safe_block_name}\" {{\n"
+                    f"# [FINOPS-RELEASED-UNASSOCIATED-EIP]   tags = {{\n"
+                    f"# [FINOPS-RELEASED-UNASSOCIATED-EIP]     Name = \"{r_name}\"\n"
+                    f"# [FINOPS-RELEASED-UNASSOCIATED-EIP]   }}\n"
+                    f"# [FINOPS-RELEASED-UNASSOCIATED-EIP] }}\n"
+                )
+                baseline_content = content.rstrip() + baseline_block
+                new_content = content.rstrip() + patched_block
+
         if new_content == content:
             return None
 
         # Compute unified diff
-        diff = self._create_unified_diff(content, new_content, "main.tf")
+        diff = self._create_unified_diff(baseline_content, new_content, "main.tf")
 
         return TerraformPatch(
             patch_id=f"patch-{finding.id}",
@@ -194,7 +320,7 @@ class TerraformRemediationModule:
             resource_name=finding.resource_name,
             target_file="sample_infrastructure/main.tf",
             action_type=action_type,
-            original_hcl=content,
+            original_hcl=baseline_content,
             patched_hcl=new_content,
             unified_diff=diff,
             validation_status="SYNTAX_VALIDATED"

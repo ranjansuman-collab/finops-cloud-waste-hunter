@@ -85,6 +85,8 @@ def validate_untrusted_input(
             recommendation.executive_summary,
             recommendation.rationale,
             "".join(recommendation.steps_to_remediate),
+            recommendation.terraform_hcl or "",
+            recommendation.terraform_explanation or "",
         ])
 
     for text in texts_to_check:
@@ -94,6 +96,14 @@ def validate_untrusted_input(
             if pattern.search(text):
                 logger.warning(f"Security policy violation detected: pattern {pattern.pattern} found in input")
                 return False, STATUS_SECURITY_POLICY_VIOLATION
+
+    # 3. Dedicated validation for Gemini-generated Terraform HCL
+    if recommendation and recommendation.terraform_hcl:
+        hcl = recommendation.terraform_hcl
+        # Ensure balanced braces
+        if hcl.count("{") != hcl.count("}") or hcl.count("(") != hcl.count(")"):
+            logger.warning("Security policy violation: malformed or unbalanced HCL syntax in recommendation")
+            return False, STATUS_SECURITY_POLICY_VIOLATION
 
     return True, "OK"
 
@@ -181,16 +191,49 @@ class TerraformChangeGenerator:
                 new_content = content.replace(matched_text, commented + "\n", 1)
                 return new_content, "DELETE", "SUCCESS"
 
-            # Fallback search by tag inside block
+            # Fallback search by tag or resource_id inside block
             alt_pattern = rf'(resource\s+"aws_ebs_volume"\s+"[^"]+"\s+{{[\s\S]*?}})'
             for m in re.finditer(alt_pattern, content):
                 block = m.group(0)
-                if f'"{r_name}"' in block:
+                if f'"{r_name}"' in block or (finding.resource_id and f'"{finding.resource_id}"' in block):
                     commented = "\n".join([f"# [FINOPS-REMOVED-UNATTACHED-VOLUME] {line}" for line in block.strip().splitlines()])
                     new_content = content.replace(block, commented, 1)
                     return new_content, "DELETE", "SUCCESS"
 
-            return None, None, STATUS_RESOURCE_NOT_FOUND_IN_CONFIG
+            # DISCOVERED_LIVE_UNMANAGED_RESOURCE:
+            # Resource exists in real AWS but was not present in static template files.
+            # Requires an active AI recommendation to synthesize remediation HCL.
+            if not recommendation:
+                return None, None, STATUS_RESOURCE_NOT_FOUND_IN_CONFIG
+
+            safe_block_name = re.sub(r"[^a-zA-Z0-9_]", "_", finding.resource_id or r_name)
+            specs = finding.metrics_summary or {}
+            size_gb = specs.get("size_gb", 1)
+            vol_type = specs.get("volume_type", "gp3")
+            az = specs.get("availability_zone", "ap-southeast-2a")
+
+            if recommendation.terraform_hcl:
+                hcl_lines = recommendation.terraform_hcl.strip().splitlines()
+                commented_hcl = "\n".join([
+                    line if line.strip().startswith("#") else f"# [FINOPS-REMOVED-UNATTACHED-VOLUME] {line}"
+                    for line in hcl_lines
+                ])
+                remediated_block = f"\n\n# --- DISCOVERED_LIVE_UNMANAGED_RESOURCE: {finding.resource_id} ---\n{commented_hcl}\n"
+            else:
+                remediated_block = (
+                    f"\n\n# --- DISCOVERED_LIVE_UNMANAGED_RESOURCE: {finding.resource_id} ---\n"
+                    f"# [FINOPS-REMOVED-UNATTACHED-VOLUME] resource \"aws_ebs_volume\" \"{safe_block_name}\" {{\n"
+                    f"# [FINOPS-REMOVED-UNATTACHED-VOLUME]   availability_zone = \"{az}\"\n"
+                    f"# [FINOPS-REMOVED-UNATTACHED-VOLUME]   size              = {size_gb}\n"
+                    f"# [FINOPS-REMOVED-UNATTACHED-VOLUME]   type              = \"{vol_type}\"\n"
+                    f"# [FINOPS-REMOVED-UNATTACHED-VOLUME]   tags = {{\n"
+                    f"# [FINOPS-REMOVED-UNATTACHED-VOLUME]     Name             = \"{r_name}\"\n"
+                    f"# [FINOPS-REMOVED-UNATTACHED-VOLUME]     FinOpsRemediated = \"true\"\n"
+                    f"# [FINOPS-REMOVED-UNATTACHED-VOLUME]   }}\n"
+                    f"# [FINOPS-REMOVED-UNATTACHED-VOLUME] }}\n"
+                )
+            new_content = content.rstrip() + remediated_block
+            return new_content, "DELETE", "SUCCESS"
 
         # -------------------------------------------------------------
         # 3. Idle Lambda Function Deprecation
@@ -208,12 +251,21 @@ class TerraformChangeGenerator:
             alt_pattern = rf'(resource\s+"aws_lambda_function"\s+"[^"]+"\s+{{[\s\S]*?}})'
             for m in re.finditer(alt_pattern, content):
                 block = m.group(0)
-                if f'"{r_name}"' in block:
+                if f'"{r_name}"' in block or (finding.resource_id and f'"{finding.resource_id}"' in block):
                     commented = "\n".join([f"# [FINOPS-DEPRECATED-DORMANT-LAMBDA] {line}" for line in block.strip().splitlines()])
                     new_content = content.replace(block, commented, 1)
                     return new_content, "DELETE", "SUCCESS"
 
-            return None, None, STATUS_RESOURCE_NOT_FOUND_IN_CONFIG
+            # DISCOVERED_LIVE_UNMANAGED_RESOURCE:
+            safe_block_name = re.sub(r"[^a-zA-Z0-9_]", "_", finding.resource_id or r_name)
+            remediated_block = (
+                f"\n\n# --- DISCOVERED_LIVE_UNMANAGED_RESOURCE: {finding.resource_id} ---\n"
+                f"# [FINOPS-DEPRECATED-DORMANT-LAMBDA] resource \"aws_lambda_function\" \"{safe_block_name}\" {{\n"
+                f"# [FINOPS-DEPRECATED-DORMANT-LAMBDA]   function_name = \"{r_name}\"\n"
+                f"# [FINOPS-DEPRECATED-DORMANT-LAMBDA] }}\n"
+            )
+            new_content = content.rstrip() + remediated_block
+            return new_content, "DELETE", "SUCCESS"
 
         # -------------------------------------------------------------
         # 4. Unassociated Elastic IP Release
@@ -230,12 +282,23 @@ class TerraformChangeGenerator:
             alt_pattern = rf'(resource\s+"aws_eip"\s+"[^"]+"\s+{{[\s\S]*?}})'
             for m in re.finditer(alt_pattern, content):
                 block = m.group(0)
-                if f'"{r_name}"' in block:
+                if f'"{r_name}"' in block or (finding.resource_id and f'"{finding.resource_id}"' in block):
                     commented = "\n".join([f"# [FINOPS-RELEASED-UNASSOCIATED-EIP] {line}" for line in block.strip().splitlines()])
                     new_content = content.replace(block, commented, 1)
                     return new_content, "DISASSOCIATE", "SUCCESS"
 
-            return None, None, STATUS_RESOURCE_NOT_FOUND_IN_CONFIG
+            # DISCOVERED_LIVE_UNMANAGED_RESOURCE:
+            safe_block_name = re.sub(r"[^a-zA-Z0-9_]", "_", finding.resource_id or r_name)
+            remediated_block = (
+                f"\n\n# --- DISCOVERED_LIVE_UNMANAGED_RESOURCE: {finding.resource_id} ---\n"
+                f"# [FINOPS-RELEASED-UNASSOCIATED-EIP] resource \"aws_eip\" \"{safe_block_name}\" {{\n"
+                f"# [FINOPS-RELEASED-UNASSOCIATED-EIP]   tags = {{\n"
+                f"# [FINOPS-RELEASED-UNASSOCIATED-EIP]     Name = \"{r_name}\"\n"
+                f"# [FINOPS-RELEASED-UNASSOCIATED-EIP]   }}\n"
+                f"# [FINOPS-RELEASED-UNASSOCIATED-EIP] }}\n"
+            )
+            new_content = content.rstrip() + remediated_block
+            return new_content, "DISASSOCIATE", "SUCCESS"
 
         # -------------------------------------------------------------
         # 5. S3 Bucket Optimization

@@ -652,5 +652,340 @@ class TestTerraformApiEndpoints(unittest.TestCase):
         self.assertTrue(apply_data["success"])
 
 
+class TestTerraformEightSafetyScenarios(unittest.TestCase):
+    """
+    Direct regression test suite for the 8 specific safety scenarios:
+    1. Plan created -> approval -> apply succeeds using same plan.
+    2. Missing plan -> apply blocked with PLAN_NOT_FOUND.
+    3. Expired plan -> apply blocked with PLAN_STALE.
+    4. Modified plan/configuration (tampering) -> apply blocked with CONFIG_TAMPERED.
+    5. Hash mismatch -> apply blocked.
+    6. Wrong plan path / missing plan file -> apply blocked with PLAN_NOT_FOUND.
+    7. New plan after expiration -> requires fresh approval.
+    8. Destructive plan -> secondary confirmation still required (DESTRUCTIVE_CONFIRMATION_REQUIRED).
+    """
+
+    def setUp(self):
+        self.temp_source = tempfile.mkdtemp()
+        self.temp_workspace = tempfile.mkdtemp()
+        self.source_dir = Path(self.temp_source)
+        self.workspace_dir = Path(self.temp_workspace)
+
+        (self.source_dir / "main.tf").write_text(_make_sample_hcl(), encoding="utf-8")
+        self.service = RealTerraformService(
+            workspace_dir=self.workspace_dir,
+            source_dir=self.source_dir,
+            use_live_terraform=False,  # Simulation mode tests core engine invariants
+        )
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_source, ignore_errors=True)
+        shutil.rmtree(self.temp_workspace, ignore_errors=True)
+
+    # 1. Plan created -> approval -> apply succeeds using same plan
+    def test_scenario_1_plan_created_approval_apply_succeeds(self):
+        plan_res = self.service.create_plan([_make_ec2_finding()])
+        self.assertTrue(plan_res.success)
+        self.assertTrue(plan_res.plan_id.startswith("plan-"))
+        self.assertTrue(Path(plan_res.plan_file).exists())
+
+        approval = TerraformApprovalRequest(
+            plan_id=plan_res.plan_id,
+            approved=True,
+            confirm_destructive=False,
+            reviewer="Lead Engineer"
+        )
+        apply_res = self.service.apply_plan(approval)
+        self.assertTrue(apply_res.success)
+        self.assertEqual(apply_res.status, STATUS_SUCCESS)
+        self.assertEqual(apply_res.plan_id, plan_res.plan_id)
+
+    # 2. Missing plan -> apply blocked with PLAN_NOT_FOUND
+    def test_scenario_2_missing_plan_blocked_with_plan_not_found(self):
+        approval = TerraformApprovalRequest(
+            plan_id="plan-nonexistent-12345",
+            approved=True,
+            confirm_destructive=False,
+        )
+        apply_res = self.service.apply_plan(approval)
+        self.assertFalse(apply_res.success)
+        self.assertEqual(apply_res.status, "PLAN_NOT_FOUND")
+        self.assertIn("not found or expired", apply_res.stderr)
+
+    # 3. Expired plan -> apply blocked with PLAN_STALE
+    def test_scenario_3_expired_plan_blocked_with_plan_stale(self):
+        plan_res = self.service.create_plan([_make_ec2_finding()])
+        stored_plan = self.service.active_plans[plan_res.plan_id]
+        stored_plan.created_at = time.time() - 3600  # Stale (>1800s)
+
+        approval = TerraformApprovalRequest(
+            plan_id=plan_res.plan_id,
+            approved=True,
+        )
+        apply_res = self.service.apply_plan(approval)
+        self.assertFalse(apply_res.success)
+        self.assertEqual(apply_res.status, "PLAN_STALE")
+        self.assertIn("stale", apply_res.stderr.lower())
+
+    # 4. Modified configuration (tampering) -> apply blocked with CONFIG_TAMPERED
+    def test_scenario_4_modified_config_tampering_blocked(self):
+        plan_res = self.service.create_plan([_make_ec2_finding()])
+        main_tf = self.workspace_dir / "main.tf"
+        main_tf.write_text(main_tf.read_text(encoding="utf-8") + "\n# unexpected edit", encoding="utf-8")
+
+        approval = TerraformApprovalRequest(
+            plan_id=plan_res.plan_id,
+            approved=True,
+        )
+        apply_res = self.service.apply_plan(approval)
+        self.assertFalse(apply_res.success)
+        self.assertEqual(apply_res.status, "CONFIG_TAMPERED")
+        self.assertIn("modified since the plan was reviewed", apply_res.stderr)
+
+    # 5. Hash mismatch -> apply blocked
+    def test_scenario_5_hash_mismatch_blocked(self):
+        plan_res = self.service.create_plan([_make_ec2_finding()])
+        stored_plan = self.service.active_plans[plan_res.plan_id]
+        plan_file = Path(stored_plan.plan_file)
+        plan_file.write_text("TAMPERED_PLAN_PAYLOAD", encoding="utf-8")
+
+        approval = TerraformApprovalRequest(
+            plan_id=plan_res.plan_id,
+            approved=True,
+        )
+        apply_res = self.service.apply_plan(approval)
+        self.assertFalse(apply_res.success)
+        self.assertEqual(apply_res.status, "CONFIG_TAMPERED")
+        self.assertIn("tampered with", apply_res.stderr.lower())
+
+    # 6. Wrong plan path / missing plan file -> apply blocked with PLAN_NOT_FOUND
+    def test_scenario_6_wrong_plan_path_or_missing_plan_file_blocked(self):
+        plan_res = self.service.create_plan([_make_ec2_finding()])
+        stored_plan = self.service.active_plans[plan_res.plan_id]
+        Path(stored_plan.plan_file).unlink()
+
+        approval = TerraformApprovalRequest(
+            plan_id=plan_res.plan_id,
+            approved=True,
+        )
+        apply_res = self.service.apply_plan(approval)
+        self.assertFalse(apply_res.success)
+        self.assertEqual(apply_res.status, "PLAN_NOT_FOUND")
+
+    # 7. New plan after expiration -> requires fresh approval
+    def test_scenario_7_new_plan_after_expiration_requires_fresh_approval(self):
+        # 1. Create first plan and age it
+        plan1_res = self.service.create_plan([_make_ec2_finding()])
+        self.service.active_plans[plan1_res.plan_id].created_at = time.time() - 3600
+
+        # Attempting apply on plan 1 fails as stale
+        app1 = TerraformApprovalRequest(plan_id=plan1_res.plan_id, approved=True)
+        apply1_res = self.service.apply_plan(app1)
+        self.assertEqual(apply1_res.status, "PLAN_STALE")
+
+        # 2. Generate new fresh plan
+        plan2_res = self.service.create_plan([_make_ec2_finding()])
+        self.assertNotEqual(plan2_res.plan_id, plan1_res.plan_id)
+
+        # 3. New plan requires its own fresh approval: approved=False fails
+        app2_unapproved = TerraformApprovalRequest(plan_id=plan2_res.plan_id, approved=False)
+        apply2_unapproved = self.service.apply_plan(app2_unapproved)
+        self.assertEqual(apply2_unapproved.status, "APPROVAL_REQUIRED")
+
+        # 4. Approving new plan succeeds
+        app2_approved = TerraformApprovalRequest(plan_id=plan2_res.plan_id, approved=True)
+        apply2_approved = self.service.apply_plan(app2_approved)
+        self.assertTrue(apply2_approved.success)
+        self.assertEqual(apply2_approved.status, STATUS_SUCCESS)
+
+    # 8. Destructive plan -> secondary confirmation still required
+    def test_scenario_8_destructive_plan_requires_secondary_confirmation(self):
+        plan_res = self.service.create_plan([_make_ebs_finding()])
+        self.assertTrue(plan_res.is_destructive)
+
+        # Approved=True, but confirm_destructive=False -> BLOCKED
+        app_unconfirmed = TerraformApprovalRequest(
+            plan_id=plan_res.plan_id,
+            approved=True,
+            confirm_destructive=False,
+        )
+        apply_unconf = self.service.apply_plan(app_unconfirmed)
+        self.assertFalse(apply_unconf.success)
+        self.assertEqual(apply_unconf.status, "DESTRUCTIVE_CONFIRMATION_REQUIRED")
+
+        # Approved=True, confirm_destructive=True -> SUCCEEDS
+        app_confirmed = TerraformApprovalRequest(
+            plan_id=plan_res.plan_id,
+            approved=True,
+            confirm_destructive=True,
+        )
+        apply_conf = self.service.apply_plan(app_confirmed)
+        self.assertTrue(apply_conf.success)
+        self.assertEqual(apply_conf.status, STATUS_SUCCESS)
+
+    def test_pipeline_run_attaches_active_terraform_plan(self):
+        from core.engine import FinOpsEngine
+        eng = FinOpsEngine(use_live_aws=False)
+        report = eng.execute_full_pipeline("enterprise")
+        self.assertIsNotNone(report.terraform_plan_id)
+        self.assertTrue(report.terraform_plan_id.startswith("plan-"))
+        self.assertIn(report.terraform_plan_id, eng.terraform_service.active_plans)
+        self.assertEqual(report.terraform_plan_status, STATUS_SUCCESS)
+
+        # Apply using that exact plan ID from report with approval
+        approval = TerraformApprovalRequest(
+            plan_id=report.terraform_plan_id,
+            approved=True,
+            confirm_destructive=True,
+        )
+        apply_res = eng.terraform_service.apply_plan(approval)
+        self.assertTrue(apply_res.success)
+
+    # ── Live Unmanaged EBS Import & Destroy Plan Generation ───────────
+
+    @patch("shutil.which", return_value="C:\\terraform\\terraform.exe")
+    @patch.object(TerraformCLI, "is_installed", return_value=(True, "Terraform v1.16.5"))
+    @patch.object(TerraformCLI, "init")
+    @patch.object(TerraformCLI, "state_list")
+    @patch.object(TerraformCLI, "import_resource")
+    @patch.object(TerraformCLI, "fmt")
+    @patch.object(TerraformCLI, "validate")
+    @patch.object(TerraformCLI, "plan")
+    @patch.object(TerraformCLI, "show")
+    def test_live_unmanaged_ebs_import_and_destroy_plan(
+        self, mock_show, mock_plan, mock_val, mock_fmt, mock_import, mock_state, mock_init, mock_inst, mock_which
+    ):
+        """
+        In live mode, unmanaged EBS findings trigger controlled import into Terraform state
+        and generate a genuine destroy plan with binary artifact.
+        """
+        mock_init.return_value = MagicMock(success=True, return_code=0, stdout="Initialized", stderr="")
+        mock_state.return_value = []  # not yet in state
+        mock_import.return_value = MagicMock(success=True, return_code=0, stdout="Import successful!", stderr="")
+        mock_fmt.return_value = MagicMock(success=True)
+        mock_val.return_value = MagicMock(valid=True)
+        mock_plan.return_value = MagicMock(success=True, stdout="Plan: 0 to add, 0 to change, 1 to destroy.", stderr="", return_code=0)
+        mock_show.return_value = MagicMock(
+            success=True,
+            stdout="# aws_ebs_volume.vol_095e4086520c65b70 will be destroyed\nPlan: 0 to add, 0 to change, 1 to destroy."
+        )
+
+        unmanaged_ebs = WasteFinding(
+            id="f-ebs-live-1",
+            resource_id="vol-095e4086520c65b70",
+            resource_name="vol-095e4086520c65b70",
+            resource_type=ResourceType.EBS,
+            waste_category=WasteCategory.UNATTACHED_STORAGE,
+            severity=Severity.MEDIUM,
+            description="Live unattached EBS volume in ap-southeast-2",
+            current_specs="1 GB gp3",
+            recommended_specs="Delete / Archive",
+            confidence_score=0.99,
+            metrics_summary={
+                "size_gb": 1,
+                "volume_type": "gp3",
+                "availability_zone": "ap-southeast-2a",
+                "days_unattached": 14,
+            },
+        )
+        rec = AIRecommendation(
+            finding_id="f-ebs-live-1",
+            resource_id="vol-095e4086520c65b70",
+            resource_name="vol-095e4086520c65b70",
+            title="Delete Unattached EBS Volume",
+            executive_summary="Delete unmanaged volume",
+            risk_level="Low Risk",
+            rationale="Unattached",
+            steps_to_remediate=["Delete"],
+            rollback_plan="Restore from snapshot",
+            confidence_score=0.98,
+            estimated_monthly_savings=0.08,
+            action_type="DELETE",
+            proposed_action="SNAPSHOT_AND_DELETE",
+            terraform_hcl="# Safe deletion\n",
+            terraform_explanation="Remove from config",
+            model_used="gemini-3.5-flash-lite",
+        )
+
+        self.service.region = "ap-southeast-2"
+        self.service.use_live_terraform = True
+        plan_res = self.service.create_plan(findings=[unmanaged_ebs], recommendations=[rec])
+
+        self.assertTrue(plan_res.success)
+        self.assertTrue(plan_res.is_destructive)
+        self.assertTrue(plan_res.requires_approval)
+        self.assertIn("will be destroyed", plan_res.stdout)
+        self.assertIn("1 to destroy", plan_res.stdout)
+
+        # Verified state binding was established
+        mock_init.assert_called_once()
+        mock_state.assert_called_once()
+        mock_import.assert_called_once_with(
+            "aws_ebs_volume.vol_095e4086520c65b70",
+            "vol-095e4086520c65b70",
+            vars={"aws_region": "ap-southeast-2"},
+        )
+        mock_plan.assert_called_once()
+        mock_show.assert_called_once()
+
+    def test_simulation_mode_never_invokes_cli_import(self):
+        """Simulation mode strictly never calls real CLI init, import, or plan."""
+        sim_service = RealTerraformService(
+            workspace_dir=self.workspace_dir,
+            source_dir=self.source_dir,
+            use_live_terraform=False,
+            region_name="ap-southeast-2",
+        )
+
+        unmanaged_ebs = WasteFinding(
+            id="f-ebs-sim-1",
+            resource_id="vol-095e4086520c65b70",
+            resource_name="vol-095e4086520c65b70",
+            resource_type=ResourceType.EBS,
+            waste_category=WasteCategory.UNATTACHED_STORAGE,
+            severity=Severity.MEDIUM,
+            description="Simulated unattached EBS volume",
+            current_specs="1 GB gp3",
+            recommended_specs="Delete",
+            confidence_score=0.99,
+            metrics_summary={"size_gb": 1, "volume_type": "gp3", "availability_zone": "ap-southeast-2a"},
+        )
+
+        rec = AIRecommendation(
+            finding_id="f-ebs-sim-1",
+            resource_id="vol-095e4086520c65b70",
+            resource_name="vol-095e4086520c65b70",
+            title="Delete Unattached EBS Volume",
+            executive_summary="Delete volume",
+            risk_level="Low Risk",
+            rationale="Unattached",
+            steps_to_remediate=["Delete"],
+            rollback_plan="Restore",
+            confidence_score=0.98,
+            estimated_monthly_savings=0.08,
+            action_type="DELETE",
+            proposed_action="SNAPSHOT_AND_DELETE",
+            terraform_hcl="# Sim HCL\n",
+            terraform_explanation="Sim explanation",
+            model_used="gemini-3.5-flash-lite",
+        )
+
+        with patch.object(TerraformCLI, "init") as mock_init, \
+             patch.object(TerraformCLI, "import_resource") as mock_import, \
+             patch.object(TerraformCLI, "plan") as mock_plan:
+            plan_res = sim_service.create_plan(findings=[unmanaged_ebs], recommendations=[rec])
+
+            self.assertTrue(plan_res.success)
+            self.assertTrue(plan_res.plan_id.startswith("plan-sim-"))
+            mock_init.assert_not_called()
+            mock_import.assert_not_called()
+            mock_plan.assert_not_called()
+
+            # Ensure plan file contains SIMULATED_PLAN_DATA
+            plan_file = Path(plan_res.plan_file)
+            self.assertEqual(plan_file.read_text(encoding="utf-8"), "SIMULATED_PLAN_DATA")
+
+
 if __name__ == "__main__":
     unittest.main()
+

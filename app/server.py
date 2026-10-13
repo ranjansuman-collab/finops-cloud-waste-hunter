@@ -19,7 +19,7 @@ from data.scenarios import SCENARIOS
 
 app = FastAPI(
     title="FinOps Cloud Waste Hunter & Auto-Remediator",
-    description="Automated cloud waste detection, Bedrock Nova Lite AI recommendation, and GitOps Terraform remediation.",
+    description="Automated cloud waste detection, Google Gemini AI recommendation, and GitOps Terraform remediation.",
     version="1.0.0"
 )
 
@@ -182,9 +182,9 @@ def get_aws_costs(region: Optional[str] = None, days: int = 30):
 
 
 @app.post("/api/aws/advisor")
-def run_bedrock_advisor(req: AdvisorRequest):
+def run_ai_advisor(req: AdvisorRequest):
     """
-    Runs the full real AWS evidence pipeline and returns Amazon Bedrock AI
+    Runs the full real AWS evidence pipeline and returns Google Gemini AI
     recommendations for detected waste.
 
     LIVE mode pipeline:
@@ -193,18 +193,18 @@ def run_bedrock_advisor(req: AdvisorRequest):
       3. Real CloudWatch metrics (window_days)
       4. Real Cost Explorer spend
       5. Waste detection on real evidence
-      6. Amazon Bedrock recommendations via AWSBedrockAdvisorService
+      6. Google Gemini recommendations via GeminiAdvisorService
 
     The frontend may only supply: region, model_id, window_days.
     It cannot inject arbitrary findings — all evidence is obtained from AWS.
 
     SAFETY:
-    - Bedrock is analysis/recommendation ONLY.
-    - Bedrock never modifies AWS, never executes Terraform.
-    - No AWS credentials are sent to Bedrock.
+    - Gemini is analysis/recommendation ONLY.
+    - Gemini never modifies AWS, never executes Terraform.
+    - No AWS credentials or secrets are sent to Gemini.
     """
     from core.aws.connection import AWSConnectionService, get_configured_region, STATUS_CONNECTED
-    from core.aws.bedrock import AWSBedrockAdvisorService, STATUS_MODEL_NOT_AVAILABLE
+    from core.gemini_advisor import GeminiAdvisorService, STATUS_MODEL_NOT_AVAILABLE
     from core.aws.discovery import AWSDiscoveryService
     from core.aws.metrics import AWSMetricsService
     from core.aws.costs import AWSCostService
@@ -288,12 +288,12 @@ def run_bedrock_advisor(req: AdvisorRequest):
             "recommendations": [],
             "assumptions": [],
             "errors": [],
-            "summary": f"No waste findings detected in {region}. No Bedrock invocation needed.",
+            "summary": f"No waste findings detected in {region}. No Gemini invocation needed.",
         }
 
-    # Step 6: Amazon Bedrock recommendations
-    bedrock_svc = AWSBedrockAdvisorService(region_name=region, model_id=req.model_id)
-    result = bedrock_svc.generate_all_recommendations(
+    # Step 6: Google Gemini recommendations
+    gemini_svc = GeminiAdvisorService(region_name=region, model_id=req.model_id)
+    result = gemini_svc.generate_all_recommendations(
         findings=waste_findings,
         costs=cost_findings,
         region_name=region,
@@ -323,7 +323,8 @@ def run_pipeline(req: PipelineRunRequest):
         report = engine.execute_full_pipeline(
             scenario_id=req.scenario,
             use_live_aws=req.use_live_aws,
-            region_name=req.region
+            region_name=req.region,
+            use_live_terraform=req.use_live_aws,
         )
         return {
             "status": "SUCCESS",
@@ -338,10 +339,18 @@ def run_pipeline(req: PipelineRunRequest):
                 "total_carbon_savings_kg": report.total_carbon_savings_kg,
                 "ai_recommendations_count": len(report.ai_recommendations),
                 "terraform_patches_count": len(report.terraform_patches),
+                "terraform_plan_id": report.terraform_plan_id,
+                "terraform_plan_status": report.terraform_plan_status,
                 "gitops_pr_id": report.gitops_pr.pr_id if report.gitops_pr else None,
                 "gitops_pr_status": report.gitops_pr.status if report.gitops_pr else None,
                 "s3_uri": report.s3_uri,
-                "dynamodb_id": report.dynamodb_id
+                "dynamodb_id": report.dynamodb_id,
+                "is_real_aws": report.is_real_aws,
+                "ai_status": report.ai_status,
+                "ai_error": report.ai_error,
+                "bedrock_status": report.bedrock_status,
+                "bedrock_error": report.bedrock_error,
+                "errors": report.errors
             },
             "report": report.model_dump()
         }
@@ -350,10 +359,20 @@ def run_pipeline(req: PipelineRunRequest):
 
 
 @app.get("/api/modules/{module_num}")
-def get_module_data(module_num: int, scenario: str = "enterprise"):
+def get_module_data(
+    module_num: int,
+    scenario: str = "enterprise",
+    use_live_aws: Optional[bool] = None,
+    region: Optional[str] = None
+):
     if module_num < 1 or module_num > 7:
         raise HTTPException(status_code=400, detail="Module number must be between 1 and 7")
-    return engine.get_module_data(module_num, scenario_id=scenario)
+    return engine.get_module_data(
+        module_num,
+        scenario_id=scenario,
+        use_live_aws=use_live_aws,
+        region_name=region
+    )
 
 
 @app.post("/api/gitops/pr/{pr_id}/approve")
@@ -414,11 +433,40 @@ def run_gitops_workflow(req: GitOpsWorkflowRequest):
         from core.module3_cost_estimation import CostEstimationModule
         from core.aws.metrics import AWSMetricsService
         from core.aws.costs import AWSCostService
+        from core.aws.connection import AWSConnectionService
+
+        conn_svc = AWSConnectionService(region_name=req.region)
+        identity = conn_svc.get_caller_identity()
+        if not identity["authenticated"]:
+            return {
+                "status": identity["status"],
+                "mode": "LIVE" if req.use_live_gitops else "SIMULATION",
+                "message": f"GitOps aborted: {identity['message']}",
+                "pr_number": None,
+                "pr_url": None,
+                "branch": None,
+                "requires_human_approval": True,
+                "automatic_apply_triggered": False,
+                "errors": [identity["message"]],
+            }
 
         monitoring = ResourceMonitoringModule(use_live_aws=True)
         if req.region:
             monitoring.region_name = req.region
-        resources = monitoring.fetch_resources()
+        try:
+            resources = monitoring.fetch_resources()
+        except Exception as exc:
+            return {
+                "status": "ERROR",
+                "mode": "LIVE" if req.use_live_gitops else "SIMULATION",
+                "message": f"Resource discovery failed: {str(exc)}",
+                "pr_number": None,
+                "pr_url": None,
+                "branch": None,
+                "requires_human_approval": True,
+                "automatic_apply_triggered": False,
+                "errors": [str(exc)],
+            }
 
         metrics_svc = AWSMetricsService(region_name=req.region)
         metrics_svc.collect_metrics_for_resources(resources=resources)
@@ -509,11 +557,38 @@ def create_terraform_plan(req: TerraformPlanApiRequest):
         from core.module3_cost_estimation import CostEstimationModule
         from core.aws.metrics import AWSMetricsService
         from core.aws.costs import AWSCostService
+        from core.aws.connection import AWSConnectionService
+
+        conn_svc = AWSConnectionService(region_name=req.region)
+        identity = conn_svc.get_caller_identity()
+        if not identity["authenticated"]:
+            from core.terraform.models import TerraformPlanResult
+            return TerraformPlanResult(
+                plan_id="",
+                success=False,
+                return_code=1,
+                stdout="",
+                stderr=f"Terraform plan aborted: {identity['message']}",
+                status=identity["status"],
+                errors=[identity["message"]],
+            ).model_dump()
 
         monitoring = ResourceMonitoringModule(use_live_aws=True)
         if req.region:
             monitoring.region_name = req.region
-        resources = monitoring.fetch_resources()
+        try:
+            resources = monitoring.fetch_resources()
+        except Exception as exc:
+            from core.terraform.models import TerraformPlanResult
+            return TerraformPlanResult(
+                plan_id="",
+                success=False,
+                return_code=1,
+                stdout="",
+                stderr=f"Resource discovery failed: {str(exc)}",
+                status="ERROR",
+                errors=[str(exc)],
+            ).model_dump()
 
         metrics_svc = AWSMetricsService(region_name=req.region)
         metrics_svc.collect_metrics_for_resources(resources=resources)
@@ -530,7 +605,13 @@ def create_terraform_plan(req: TerraformPlanApiRequest):
             cost_explorer_data=ce_data,
             is_real_aws=True
         )
-        recommendations = []
+        if engine.last_report and engine.last_report.is_real_aws and engine.last_report.ai_recommendations:
+            recommendations = engine.last_report.ai_recommendations
+        else:
+            try:
+                recommendations = engine.module4.generate_recommendations(findings, costs)
+            except Exception:
+                recommendations = []
     else:
         # Simulation mode: ensure last_report is present
         if not engine.last_report or (req.scenario and engine.last_report.scenario != req.scenario):
@@ -540,7 +621,7 @@ def create_terraform_plan(req: TerraformPlanApiRequest):
         costs = engine.last_report.cost_findings if engine.last_report else []
 
     # Configure service
-    engine.terraform_service.use_live_terraform = req.use_live_terraform
+    engine.terraform_service.use_live_terraform = req.use_live_terraform or req.use_live_aws
     if req.region:
         engine.terraform_service.region = req.region
 
@@ -549,6 +630,15 @@ def create_terraform_plan(req: TerraformPlanApiRequest):
         recommendations=recommendations,
         cost_findings=costs,
     )
+    if engine.last_report:
+        engine.last_report.terraform_plan_id = plan_result.plan_id
+        engine.last_report.terraform_plan_file = str(plan_result.plan_file) if plan_result.plan_file else None
+        engine.last_report.terraform_plan_status = plan_result.status
+        engine.last_report.terraform_plan_stdout = plan_result.stdout
+        engine.last_report.terraform_plan_stderr = plan_result.stderr
+        engine.last_report.terraform_plan_hash = plan_result.config_hash
+        engine.last_report.terraform_plan_result = plan_result.model_dump()
+
     return plan_result.model_dump()
 
 
@@ -558,7 +648,7 @@ def apply_terraform_plan(req: TerraformApplyApiRequest):
     Applies an already-reviewed and validated Terraform plan.
     Requires explicit user approval (approved=True) and checks for staleness,
     configuration integrity, and confirmation for destructive actions.
-    NEVER allows Bedrock or background automation to bypass human sign-off.
+    NEVER allows Gemini, Bedrock, or background automation to bypass human sign-off.
     """
     from core.terraform.models import TerraformApprovalRequest
 
@@ -636,7 +726,7 @@ def get_metadata():
             {"num": 1, "name": "Resource Monitoring", "desc": "Collects utilization metrics from simulated/live AWS infrastructure."},
             {"num": 2, "name": "Waste Detection", "desc": "Identifies unattached EBS, idle Lambdas, oversized EC2, and unused EIPs."},
             {"num": 3, "name": "Cost & Savings Estimation", "desc": "Computes current spend, optimized spend, monthly savings, and CO2e."},
-            {"num": 4, "name": "AI Recommendation", "desc": "Amazon Bedrock Nova Lite synthesizes rationale, risk, and steps."},
+            {"num": 4, "name": "AI Recommendation", "desc": "Google Gemini (gemini-3.5-flash-lite) synthesizes rationale, risk, and steps."},
             {"num": 5, "name": "Report Storage", "desc": "Persists structured reports to S3 and registers audit records in DynamoDB."},
             {"num": 6, "name": "Terraform Remediation", "desc": "Translates approved recommendations into HCL code patches and diffs."},
             {"num": 7, "name": "GitOps Review", "desc": "Automates reviewable pull requests and simulated CI/CD approval workflows."}
