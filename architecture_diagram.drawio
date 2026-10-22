@@ -1,0 +1,132 @@
+<mxfile host="app.diagrams.net" modified="2026-10-18T20:50:00.000Z" agent="Mozilla/5.0" version="21.0.0" type="device">
+  <diagram id="simple_arch" name="Cloud Waste Hunter Architecture">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1250" pageHeight="850" background="#ffffff">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- Title -->
+        <mxCell id="title" value="Cloud Waste Hunter - System Architecture" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="350" y="20" width="500" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Layer 1: Frontend -->
+        <mxCell id="box_ui" value="Frontend (Web UI)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#000000;fontSize=13;fontStyle=1;startSize=25;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="80" width="1080" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_dash" value="Dashboard UI&#xa;(Tailwind &amp; Chart.js)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="box_ui">
+          <mxGeometry x="50" y="40" width="180" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_mode" value="Mode Selector&#xa;(Live AWS / Demo)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="box_ui">
+          <mxGeometry x="300" y="40" width="170" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_findings" value="Waste &amp; Savings Table" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="box_ui">
+          <mxGeometry x="540" y="40" width="190" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_gate" value="Human Approval Gate&#xa;[Approve &amp; Apply]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=11;" vertex="1" parent="box_ui">
+          <mxGeometry x="800" y="40" width="210" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Layer 2: Backend -->
+        <mxCell id="box_backend" value="Backend &amp; Core Engine (FastAPI / Python)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#000000;fontSize=13;fontStyle=1;startSize=25;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="225" width="1080" height="275" as="geometry" />
+        </mxCell>
+        <mxCell id="api_gw" value="FastAPI REST API (/api/pipeline/run, /api/terraform/apply)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;fontStyle=1;" vertex="1" parent="box_backend">
+          <mxGeometry x="40" y="40" width="1000" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="engine" value="FinOps Orchestrator Engine" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;fontStyle=1;" vertex="1" parent="box_backend">
+          <mxGeometry x="40" y="90" width="1000" height="35" as="geometry" />
+        </mxCell>
+        
+        <!-- Modules -->
+        <mxCell id="m1" value="1. Discovery &amp; Telemetry&#xa;(EC2, EBS, CloudWatch)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;" vertex="1" parent="box_backend">
+          <mxGeometry x="40" y="150" width="150" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="m2" value="2. Waste Detection&#xa;(Idle instances, volumes)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;" vertex="1" parent="box_backend">
+          <mxGeometry x="220" y="150" width="150" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="m3" value="3. Cost &amp; Carbon&#xa;(Estimated Savings $)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;" vertex="1" parent="box_backend">
+          <mxGeometry x="400" y="150" width="145" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="m4" value="4. AI Advisor&#xa;(Gemini Reasoning)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;" vertex="1" parent="box_backend">
+          <mxGeometry x="575" y="150" width="145" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="m5" value="5. Terraform Engine&#xa;(HCL Diff &amp; .tfplan)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;" vertex="1" parent="box_backend">
+          <mxGeometry x="750" y="150" width="145" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="m6" value="6. GitOps Workflow&#xa;(Branch &amp; PR Review)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;" vertex="1" parent="box_backend">
+          <mxGeometry x="925" y="150" width="130" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Layer 3: External Services -->
+        <mxCell id="box_ext" value="External Services &amp; Infrastructure" style="swimlane;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#000000;fontSize=13;fontStyle=1;startSize=25;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="535" width="1080" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="ext_aws" value="AWS Cloud&#xa;• EC2 / EBS&#xa;• CloudWatch Metrics&#xa;• Cost Explorer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;fontSize=11;align=center;" vertex="1" parent="box_ext">
+          <mxGeometry x="50" y="40" width="200" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="ext_ai" value="Google Gemini API&#xa;• Root-cause analysis&#xa;• Waste recommendations&#xa;• Risk classification" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;fontSize=11;align=center;" vertex="1" parent="box_ext">
+          <mxGeometry x="320" y="40" width="200" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="ext_tf" value="Terraform CLI&#xa;• terraform validate&#xa;• terraform plan&#xa;• terraform apply (safe)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;fontSize=11;align=center;" vertex="1" parent="box_ext">
+          <mxGeometry x="590" y="40" width="200" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="ext_git" value="GitHub / GitOps&#xa;• Branch creation&#xa;• Pull Requests&#xa;• Audit Log" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;fontSize=11;align=center;" vertex="1" parent="box_ext">
+          <mxGeometry x="850" y="40" width="180" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- Edges -->
+        <mxCell id="e1" value="HTTP Requests" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6c8ebf;strokeWidth=2;fontSize=10;" edge="1" source="ui_dash" target="api_gw" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=2;" edge="1" source="api_gw" target="engine" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Module Flow Arrows -->
+        <mxCell id="e_m1_m2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=1.5;" edge="1" source="m1" target="m2" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_m2_m3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=1.5;" edge="1" source="m2" target="m3" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_m3_m4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=1.5;" edge="1" source="m3" target="m4" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_m4_m5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=1.5;" edge="1" source="m4" target="m5" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_m5_m6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=1.5;" edge="1" source="m5" target="m6" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Module to External -->
+        <mxCell id="e_aws" value="Boto3 / Metrics" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d6b656;strokeWidth=1.5;fontSize=10;" edge="1" source="m1" target="ext_aws" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ai" value="AI Prompt" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d6b656;strokeWidth=1.5;fontSize=10;" edge="1" source="m4" target="ext_ai" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_tf" value="Plan / Validate" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d6b656;strokeWidth=1.5;fontSize=10;" edge="1" source="m5" target="ext_tf" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_git" value="Create PR" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d6b656;strokeWidth=1.5;fontSize=10;" edge="1" source="m6" target="ext_git" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Approval Gate -->
+        <mxCell id="e_gate" value="Approval Token" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#b85450;strokeWidth=2;dashed=1;fontSize=10;fontColor=#b85450;" edge="1" source="ui_gate" target="ext_tf" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="965" y="210" />
+              <mxPoint x="1110" y="210" />
+              <mxPoint x="1110" y="620" />
+              <mxPoint x="790" y="620" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

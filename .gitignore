@@ -36,3 +36,16 @@ crash.*.log
 *.plan
 storage/terraform_workspace/
 storage/tf_linux/
+
+# Testing
+.pytest_cache/
+htmlcov/
+
+# Headless browser profile (ephemeral runtime state)
+chrome_profile/
+
+# Office temporary lock files
+~$*.docx
+~$*.doc
+~$*.xlsx
+~$*.pptx

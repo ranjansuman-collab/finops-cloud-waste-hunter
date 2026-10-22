@@ -119,7 +119,8 @@ class TestLiveEBSPipeline(unittest.TestCase):
         })
 
         engine = FinOpsEngine(use_live_aws=True)
-        with patch("core.aws.connection.has_aws_credentials", return_value=True):
+        with patch("core.aws.connection.has_aws_credentials", return_value=True), \
+             patch("core.aws.connection.AWSConnectionService.get_caller_identity", return_value={"authenticated": True, "status": "CONNECTED", "account_id": "105456916922", "arn": "arn:aws:iam::105456916922:root"}):
             report = engine.execute_full_pipeline(use_live_aws=True, region_name="ap-southeast-2")
 
         # Monitored resources and waste findings must be intact
@@ -209,7 +210,9 @@ class TestLiveEBSPipeline(unittest.TestCase):
         mock_gemini_rec.return_value = (gemini_rec, {"status": "SUCCESS", "model_used": "gemini-3.5-flash-lite"})
 
         engine = FinOpsEngine(use_live_aws=True)
-        with patch("core.aws.connection.has_aws_credentials", return_value=True):
+        with patch("core.aws.connection.has_aws_credentials", return_value=True), \
+             patch("core.aws.connection.AWSConnectionService.get_caller_identity", return_value={"authenticated": True, "status": "CONNECTED", "account_id": "105456916922", "arn": "arn:aws:iam::105456916922:root"}), \
+             patch("core.gemini_advisor.GeminiAdvisorService.get_client", return_value=(MagicMock(), {"status": "CONNECTED", "message": "OK"})):
             report = engine.execute_full_pipeline(use_live_aws=True, region_name="ap-southeast-2")
 
         # Must have 1 waste finding, 1 AI recommendation, and 1 Terraform patch
@@ -359,7 +362,9 @@ class TestLiveEBSPipeline(unittest.TestCase):
         mock_gemini_rec.return_value = (None, {"status": "RATE_LIMITED", "message": "Resource exhausted (quota exceeded)"})
 
         engine = FinOpsEngine(use_live_aws=True)
-        with patch("core.aws.connection.has_aws_credentials", return_value=True):
+        with patch("core.aws.connection.has_aws_credentials", return_value=True), \
+             patch("core.aws.connection.AWSConnectionService.get_caller_identity", return_value={"authenticated": True, "status": "CONNECTED", "account_id": "105456916922", "arn": "arn:aws:iam::105456916922:root"}), \
+             patch("core.gemini_advisor.GeminiAdvisorService.get_client", return_value=(MagicMock(), {"status": "CONNECTED", "message": "OK"})):
             report = engine.execute_full_pipeline(use_live_aws=True, region_name="ap-southeast-2")
 
         # Waste findings exist, but 0 fake recommendations and 0 fake patches

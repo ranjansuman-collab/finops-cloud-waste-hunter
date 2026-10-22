@@ -8,7 +8,7 @@ Team: Vivek Pandey (24MIS0216) & S. Hemal (24MIS0050)
 import re
 import difflib
 import logging
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from pathlib import Path
 from core.models import (
     WasteFinding,

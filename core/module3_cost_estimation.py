@@ -5,7 +5,7 @@ ISWE309L Cloud Computing - Course Project Review-1
 Team: Vivek Pandey (24MIS0216) & S. Hemal (24MIS0050)
 """
 
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional, Any
 from core.models import (
     WasteFinding,
     CloudResource,
